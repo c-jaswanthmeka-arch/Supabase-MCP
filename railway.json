@@ -5,7 +5,7 @@
     "buildCommand": "npm run build"
   },
   "deploy": {
-    "startCommand": "npm run start:http",
+    "startCommand": "npm run start:sse",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }

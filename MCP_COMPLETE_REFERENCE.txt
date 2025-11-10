@@ -1,0 +1,308 @@
+================================================================================
+                    SUPABASE MCP SERVER - COMPLETE REFERENCE
+================================================================================
+
+BASE URL: https://web-production-bd81.up.railway.app
+
+================================================================================
+                           AVAILABLE TOOLS/ENDPOINTS
+================================================================================
+
+1. HEALTH CHECK & API INFO
+   Endpoint: GET /
+   Description: Get server information and available endpoints
+   URL: https://web-production-bd81.up.railway.app/
+   Response: Server info with all endpoints listed
+
+--------------------------------------------------------------------------------
+
+2. LIST ALL TOOLS
+   Endpoint: GET /api/tools
+   Description: List all available API tools
+   URL: https://web-production-bd81.up.railway.app/api/tools
+   Response: Array of all available tools with descriptions
+
+--------------------------------------------------------------------------------
+
+3. GET MEMBERS
+   Tool Name: get_members
+   Endpoint: GET /api/members
+   Description: Retrieve member data from fact_member table
+   URL: https://web-production-bd81.up.railway.app/api/members
+   
+   Parameters (Query String):
+   - limit (number): Maximum number of records to return
+   - order (string): Order by field (e.g., 'id.asc', 'created_at.desc')
+   - select (string): Comma-separated list of fields to select
+   
+   Example: GET /api/members?limit=10&order=id.asc
+
+--------------------------------------------------------------------------------
+
+4. GET RESORTS
+   Tool Name: get_resorts
+   Endpoint: GET /api/resorts
+   Description: Retrieve resort data from fact_resort table
+   URL: https://web-production-bd81.up.railway.app/api/resorts
+   
+   Parameters (Query String):
+   - limit (number): Maximum number of records to return
+   - order (string): Order by field
+   - select (string): Comma-separated list of fields to select
+   
+   Example: GET /api/resorts?limit=20&order=rating.desc
+
+--------------------------------------------------------------------------------
+
+5. GET FEEDBACK
+   Tool Name: get_feedback
+   Endpoint: GET /api/feedback
+   Description: Retrieve feedback data from fact_feedback table
+   URL: https://web-production-bd81.up.railway.app/api/feedback
+   
+   Parameters (Query String):
+   - limit (number): Maximum number of records to return
+   - order (string): Order by field
+   - select (string): Comma-separated list of fields to select
+   
+   Example: GET /api/feedback?limit=50&order=created_at.desc
+
+--------------------------------------------------------------------------------
+
+6. GET EVENTS
+   Tool Name: get_events
+   Endpoint: GET /api/events
+   Description: Retrieve event data from fact_event table
+   URL: https://web-production-bd81.up.railway.app/api/events
+   
+   Parameters (Query String):
+   - limit (number): Maximum number of records to return
+   - order (string): Order by field
+   - select (string): Comma-separated list of fields to select
+   
+   Example: GET /api/events?limit=30&order=date.asc
+
+--------------------------------------------------------------------------------
+
+7. ANALYZE DATA
+   Tool Name: analyze_data
+   Endpoint: POST /api/analyze
+   Description: Perform analytical queries across Supabase tables
+   URL: https://web-production-bd81.up.railway.app/api/analyze
+   Method: POST
+   Headers: Content-Type: application/json
+   
+   Body Parameters:
+   - table (required, string): One of:
+     * fact_member
+     * fact_resort
+     * fact_feedback
+     * fact_event
+   - operation (required, string): One of:
+     * count - Count records
+     * list - List all records
+     * aggregate - Aggregate data
+   - field (optional, string): Field name for aggregation operations
+   
+   Example Body:
+   {
+     "table": "fact_member",
+     "operation": "count"
+   }
+
+--------------------------------------------------------------------------------
+
+8. QUERY TABLE WITH FILTERS
+   Tool Name: query_table
+   Endpoint: POST /api/query
+   Description: Generic query tool with advanced filtering capabilities
+   URL: https://web-production-bd81.up.railway.app/api/query
+   Method: POST
+   Headers: Content-Type: application/json
+   
+   Body Parameters:
+   - table (required, string): One of:
+     * fact_member
+     * fact_resort
+     * fact_feedback
+     * fact_event
+   - filters (optional, object): Filter conditions
+     * Simple filter: {"status": "active"}
+     * Advanced filter: {"rating": {"operator": "gte", "value": "4"}}
+   - limit (optional, number): Maximum number of records to return
+   - order (optional, string): Order by field
+   
+   Supported Filter Operators:
+   - eq - Equals
+   - neq - Not equals
+   - gt - Greater than
+   - gte - Greater than or equal
+   - lt - Less than
+   - lte - Less than or equal
+   - like - Pattern match (case-sensitive)
+   - ilike - Pattern match (case-insensitive)
+   - is - IS NULL/IS NOT NULL
+   - in - IN array
+   
+   Example Body:
+   {
+     "table": "fact_member",
+     "filters": {
+       "status": "active",
+       "rating": {
+         "operator": "gte",
+         "value": "4"
+       }
+     },
+     "limit": 10,
+     "order": "id.asc"
+   }
+
+================================================================================
+                           AVAILABLE TABLES
+================================================================================
+
+1. fact_member - Member data
+2. fact_resort - Resort data
+3. fact_feedback - Feedback data
+4. fact_event - Event data
+
+================================================================================
+                              CAPABILITIES
+================================================================================
+
+DATA RETRIEVAL:
+- Get all records from any table
+- Limit results
+- Order/sort results
+- Select specific fields
+
+FILTERING:
+- Simple equality filters
+- Comparison operators (gt, lt, gte, lte)
+- Pattern matching (like, ilike)
+- Multiple conditions
+
+ANALYTICS:
+- Count records
+- List all records
+- Basic aggregations
+
+QUERYING:
+- Generic queries with filters
+- Multi-condition filtering
+- Sorting and pagination
+
+================================================================================
+                            RESPONSE FORMAT
+================================================================================
+
+SUCCESS RESPONSE:
+{
+  "success": true,
+  "data": [...],
+  "count": 10
+}
+
+ERROR RESPONSE:
+{
+  "success": false,
+  "error": "Error message"
+}
+
+================================================================================
+                            AUTHENTICATION
+================================================================================
+
+- No authentication required
+- All endpoints are open
+- CORS enabled for all origins
+
+================================================================================
+                            EXAMPLE QUERIES
+================================================================================
+
+1. Get first 10 members:
+   GET https://web-production-bd81.up.railway.app/api/members?limit=10
+
+2. Count all resorts:
+   POST https://web-production-bd81.up.railway.app/api/analyze
+   Body: {"table": "fact_resort", "operation": "count"}
+
+3. Get active members with rating >= 4:
+   POST https://web-production-bd81.up.railway.app/api/query
+   Body: {
+     "table": "fact_member",
+     "filters": {
+       "status": "active",
+       "rating": {"operator": "gte", "value": "4"}
+     },
+     "limit": 20
+   }
+
+4. Get top 5 resorts by rating:
+   GET https://web-production-bd81.up.railway.app/api/resorts?limit=5&order=rating.desc
+
+5. Get feedback ordered by date:
+   GET https://web-production-bd81.up.railway.app/api/feedback?limit=50&order=created_at.desc
+
+6. List all events:
+   GET https://web-production-bd81.up.railway.app/api/events
+
+7. Analyze member count:
+   POST https://web-production-bd81.up.railway.app/api/analyze
+   Body: {"table": "fact_member", "operation": "count"}
+
+8. Query resorts with filters:
+   POST https://web-production-bd81.up.railway.app/api/query
+   Body: {
+     "table": "fact_resort",
+     "filters": {
+       "rating": {"operator": "gte", "value": "4"}
+     },
+     "limit": 10,
+     "order": "rating.desc"
+   }
+
+================================================================================
+                              SUMMARY
+================================================================================
+
+- 8 total endpoints (1 health check + 7 API endpoints)
+- 4 data tables (members, resorts, feedback, events)
+- 6 MCP tools available
+- Multiple filter operators supported
+- Sorting, limiting, field selection available
+- Analytical operations (count, list, aggregate)
+- No authentication required
+- CORS enabled
+
+================================================================================
+                         POSTMAN COLLECTION
+================================================================================
+
+Import the postman_collection.json file into Postman to get all requests
+pre-configured with examples.
+
+================================================================================
+                         DEPLOYMENT INFORMATION
+================================================================================
+
+Platform: Railway
+URL: https://web-production-bd81.up.railway.app
+Status: Live and operational
+Version: 1.0.0
+
+================================================================================
+                         SUPPORT & DOCUMENTATION
+================================================================================
+
+- POSTMAN_API_DOCS.md - Complete API documentation
+- QUICK_START.md - Quick start guide
+- DEPLOYMENT.md - Deployment instructions
+- README.md - Project overview
+
+================================================================================
+                              END OF REFERENCE
+================================================================================
+
