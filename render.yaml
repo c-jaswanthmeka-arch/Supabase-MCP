@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: supabase-mcp-server
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:http
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+
