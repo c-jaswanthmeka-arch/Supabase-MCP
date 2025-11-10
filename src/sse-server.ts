@@ -154,13 +154,18 @@ async function performAnalyticalQuery(
   field?: string,
   filters?: Record<string, any>
 ): Promise<any> {
+  // Validate filters format - must be an object, not an array
+  if (filters && Array.isArray(filters)) {
+    throw new Error("Invalid filters format: 'filters' must be an object (key-value pairs), not an array. Example: {'membership_tier': 'Red'} or {'membership_tier': {'operator': 'eq', 'value': 'Red'}}. DO NOT use array format like [{'column': '...', 'operator': '...', 'value': '...'}].");
+  }
+
   switch (operation) {
     case "count": {
       // Build query params with filters if provided
       const queryParams: Record<string, string> = {};
       
       // Handle filters if provided
-      if (filters && Object.keys(filters).length > 0) {
+      if (filters && typeof filters === 'object' && !Array.isArray(filters) && Object.keys(filters).length > 0) {
         Object.entries(filters).forEach(([key, value]) => {
           if (typeof value === 'object' && value !== null && 'operator' in value) {
             const op = (value as any).operator || 'eq';
@@ -243,7 +248,7 @@ async function performAnalyticalQuery(
       const queryParams: Record<string, string> = { limit: "10000" };
       
       // Handle filters if provided
-      if (filters && Object.keys(filters).length > 0) {
+      if (filters && typeof filters === 'object' && !Array.isArray(filters) && Object.keys(filters).length > 0) {
         Object.entries(filters).forEach(([key, value]) => {
           if (typeof value === 'object' && value !== null && 'operator' in value) {
             const op = (value as any).operator || 'eq';
@@ -281,7 +286,7 @@ async function performAnalyticalQuery(
       const queryParams: Record<string, string> = { limit: "10000" };
       
       // Handle filters if provided
-      if (filters && Object.keys(filters).length > 0) {
+      if (filters && typeof filters === 'object' && !Array.isArray(filters) && Object.keys(filters).length > 0) {
         Object.entries(filters).forEach(([key, value]) => {
           if (typeof value === 'object' && value !== null && 'operator' in value) {
             const op = (value as any).operator || 'eq';
@@ -471,7 +476,7 @@ const tools: Tool[] = [
   {
     name: "query_table",
     description:
-      "Generic query tool for any Supabase table with advanced filtering and querying capabilities. Use when user wants filtered results or to SHOW/DISPLAY records with conditions. CRITICAL: Table name MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event' (always use 'fact_' prefix, never use 'resorts', 'members', 'feedback', or 'events'). Supports advanced filtering with operators (eq, gt, gte, lt, lte, like, ilike). When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'log_date' (NOT 'feedback_date') for fact_feedback. Format: filters: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. For resort names, use 'ilike' operator for case-insensitive matching: {'resort_name': {'operator': 'ilike', 'value': 'Assanora'}}. For sales/revenue analysis: Query fact_resort data for specific time periods/resorts, then query fact_event table for the same time period to find potential reasons (weather, competitor promotions, economic factors, local events). For feedback analysis: Query fact_feedback by resort_name_fk, log_date (NOT feedback_date), or nps_score. For customer analysis: Query fact_member by membership_tier, region, or date_joined. For cross-referencing: Query resorts affected by events in a specific region/time, resorts with poor feedback, resorts attracting specific customer tiers. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Generic query tool for any Supabase table with advanced filtering and querying capabilities. Use when user wants filtered results or to SHOW/DISPLAY records with conditions. CRITICAL: Table name MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event' (always use 'fact_' prefix, never use 'resorts', 'members', 'feedback', or 'events'). Supports advanced filtering with operators (eq, gt, gte, lt, lte, like, ilike). When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'log_date' (NOT 'feedback_date') for fact_feedback. CRITICAL FORMAT: 'filters' MUST be an OBJECT (not an array). Examples: Simple equality: {'membership_tier': 'Red'}. With operator: {'membership_tier': {'operator': 'eq', 'value': 'Red'}}. Date range: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. Multiple filters: {'membership_tier': 'Red', 'is_active': true}. For resort names, use 'ilike' operator for case-insensitive matching: {'resort_name': {'operator': 'ilike', 'value': 'Assanora'}}. DO NOT use array format like [{'column': '...', 'operator': '...', 'value': '...'}]. There is NO 'columns' parameter. For sales/revenue analysis: Query fact_resort data for specific time periods/resorts, then query fact_event table for the same time period to find potential reasons (weather, competitor promotions, economic factors, local events). For feedback analysis: Query fact_feedback by resort_name_fk, log_date (NOT feedback_date), or nps_score. For customer analysis: Query fact_member by membership_tier, region, or date_joined. For cross-referencing: Query resorts affected by events in a specific region/time, resorts with poor feedback, resorts attracting specific customer tiers. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -483,7 +488,7 @@ const tools: Tool[] = [
         filters: {
           type: "object",
           description:
-            "Filter conditions as key-value pairs. Supports operators: eq, gt, gte, lt, lte, like, ilike. For date ranges: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. For operators: {'field': {'operator': 'gte', 'value': '4'}}. For equality: {'is_active': true}",
+            "Filter conditions as an OBJECT (key-value pairs), NOT an array. Examples: Simple equality: {'membership_tier': 'Red'}. With operator: {'membership_tier': {'operator': 'eq', 'value': 'Red'}}. Date range: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. Multiple filters: {'membership_tier': 'Red', 'is_active': true}. Supports operators: eq, gt, gte, lt, lte, like, ilike. DO NOT use array format [{'column': '...', 'operator': '...', 'value': '...'}].",
         },
         limit: {
           type: "number",
@@ -855,6 +860,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           throw new Error("Table name is required");
         }
 
+        // Validate filters format - must be an object, not an array
+        if (filters && Array.isArray(filters)) {
+          throw new Error("Invalid filters format: 'filters' must be an object (key-value pairs), not an array. Example: {'membership_tier': 'Red'} or {'membership_tier': {'operator': 'eq', 'value': 'Red'}}. DO NOT use array format like [{'column': '...', 'operator': '...', 'value': '...'}].");
+        }
+
         const queryParams: Record<string, string> = {};
         if (limit) {
           queryParams.limit = String(limit);
@@ -867,7 +877,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         // Build filter query string if filters provided
         // Supports PostgREST syntax: eq, neq, gt, gte, lt, lte, like, ilike, is, in
         // Also supports date ranges with gte and lte in same object
-        if (filters && Object.keys(filters).length > 0) {
+        if (filters && typeof filters === 'object' && !Array.isArray(filters) && Object.keys(filters).length > 0) {
           Object.entries(filters).forEach(([key, value]) => {
             // If value is an object with operator, use it (e.g., {operator: 'gt', value: 100})
             if (typeof value === 'object' && value !== null && 'operator' in value) {
