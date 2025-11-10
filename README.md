@@ -1,6 +1,6 @@
 # Supabase MCP Server
 
-An MCP (Model Context Protocol) server that provides access to Supabase fact tables with analytical query capabilities.
+An MCP (Model Context Protocol) server that provides access to Supabase fact tables with analytical query capabilities. The server supports both stdio and SSE/Streamable HTTP transports for agent integration.
 
 ## Features
 
@@ -15,6 +15,11 @@ An MCP (Model Context Protocol) server that provides access to Supabase fact tab
   - List all records
   - Aggregate data
   - Filter and query with custom parameters
+
+- Agent integration:
+  - Auto-discovery of tools
+  - Automatic tool selection based on user queries
+  - Structured responses in MCP format
 
 ## Prerequisites
 
@@ -37,6 +42,28 @@ npm run build
 
 ### Running the Server
 
+The server supports two transport methods:
+
+#### 1. SSE/Streamable HTTP (Deployed - Recommended for Agents)
+
+The server runs on HTTP using SSE/Streamable HTTP transport (MCP Protocol over HTTP):
+
+```bash
+npm run start:sse
+```
+
+For development with auto-reload:
+```bash
+npm run dev:sse
+```
+
+**Deployed Version:**
+- URL: `https://web-production-bd81.up.railway.app`
+- Transport: SSE/Streamable HTTP (MCP Protocol)
+- Use for: Agent integration, MCP nodes that support HTTP/SSE
+
+#### 2. stdio (Local - For MCP Clients)
+
 The server runs on stdio and communicates via the MCP protocol:
 
 ```bash
@@ -48,7 +75,11 @@ For development with auto-reload:
 npm run dev
 ```
 
+**Use for:** Local MCP clients (Cursor, local agents via stdio)
+
 ### MCP Tools Available
+
+The server provides 6 MCP tools that can be auto-discovered by agents:
 
 1. **get_members** - Retrieve member data
    - Parameters: `limit`, `order`, `select`
@@ -68,53 +99,109 @@ npm run dev
 6. **query_table** - Generic query tool with filtering
    - Parameters: `table`, `filters` (object), `limit`, `order`
 
+### How SSE/Streamable HTTP Works
+
+The SSE/Streamable HTTP transport implements MCP protocol over HTTP:
+
+1. **Connection**: Client connects via HTTP GET with `Accept: text/event-stream`
+2. **Session**: Server establishes SSE stream and returns session ID
+3. **Communication**: 
+   - Client sends JSON-RPC messages via HTTP POST
+   - Server responds with JSON-RPC messages over SSE stream
+4. **Auto-Discovery**: Agents can call `tools/list` to discover all available tools
+5. **Tool Execution**: Agents call `tools/call` with tool name and arguments
+
+### Agent Integration
+
+When connected to an agent (e.g., DevRev Agent):
+
+1. **Auto-Discovery**: Agent automatically discovers all 6 tools via `tools/list`
+2. **Query Understanding**: Agent analyzes user queries and matches to appropriate tools
+3. **Tool Selection**: Agent selects the right tool based on query intent
+4. **Execution**: Agent calls `tools/call` with appropriate parameters
+5. **Response**: Agent receives structured response and formats for user
+
+**Example Flow:**
+- User: "How many members do we have?"
+- Agent: Discovers tools → Matches to `analyze_data` → Calls with `table: "fact_member", operation: "count"` → Returns count to user
+
 ### Example Queries
 
 **Get all members:**
 ```json
 {
-  "tool": "get_members"
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "get_members"
+  },
+  "id": 1
 }
 ```
 
 **Get first 10 resorts:**
 ```json
 {
-  "tool": "get_resorts",
-  "arguments": {
-    "limit": 10
-  }
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "get_resorts",
+    "arguments": {
+      "limit": 10
+    }
+  },
+  "id": 2
 }
 ```
 
 **Count feedback records:**
 ```json
 {
-  "tool": "analyze_data",
-  "arguments": {
-    "table": "fact_feedback",
-    "operation": "count"
-  }
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "analyze_data",
+    "arguments": {
+      "table": "fact_feedback",
+      "operation": "count"
+    }
+  },
+  "id": 3
 }
 ```
 
 **Query events with filters:**
 ```json
 {
-  "tool": "query_table",
-  "arguments": {
-    "table": "fact_event",
-    "filters": {
-      "status": "active"
-    },
-    "limit": 20
-  }
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "query_table",
+    "arguments": {
+      "table": "fact_event",
+      "filters": {
+        "status": "active"
+      },
+      "limit": 20
+    }
+  },
+  "id": 4
 }
 ```
 
-## Connecting to MCP Workflow
+## Connecting to Agents/MCP Workflows
 
-To connect this server to an MCP node in your workflow:
+### For DevRev Agent (SSE/Streamable HTTP)
+
+1. Connect to deployed server: `https://web-production-bd81.up.railway.app`
+2. Transport: SSE/Streamable HTTP (MCP Protocol)
+3. Agent will automatically:
+   - Discover all tools via `tools/list`
+   - Understand user queries
+   - Select appropriate tools
+   - Execute queries and return responses
+
+### For Local MCP Clients (stdio)
 
 1. Configure the MCP server path to point to this project
 2. Set the command to: `node /path/to/dist/index.js`
@@ -122,17 +209,35 @@ To connect this server to an MCP node in your workflow:
 
 ## Configuration
 
-The Supabase URL and API key are currently hardcoded in `src/index.ts`. For production use, consider:
+The Supabase URL and API key are currently hardcoded in the source files. For production use, consider:
 
 - Using environment variables
 - Using a configuration file
 - Using secure credential management
 
-To update the configuration, modify these constants in `src/index.ts`:
+To update the configuration, modify these constants in `src/sse-server.ts` or `src/index.ts`:
 ```typescript
 const SUPABASE_URL = "https://falunbwzjuhebsgtnrbx.supabase.co";
 const SUPABASE_API_KEY = "your-api-key";
 ```
+
+## Deployment
+
+The server is deployed on Railway:
+
+- **Platform**: Railway
+- **URL**: `https://web-production-bd81.up.railway.app`
+- **Transport**: SSE/Streamable HTTP (MCP Protocol)
+- **Status**: Live and operational
+
+### Deploying to Railway
+
+1. Push code to GitHub
+2. Connect Railway to your GitHub repository
+3. Railway auto-detects and deploys
+4. Server starts with `npm run start:sse`
+
+See `railway.json` for deployment configuration.
 
 ## Development
 
@@ -141,11 +246,14 @@ const SUPABASE_API_KEY = "your-api-key";
 ```
 .
 ├── src/
-│   └── index.ts          # Main MCP server implementation
+│   ├── index.ts          # stdio MCP server (local use)
+│   └── sse-server.ts     # SSE/Streamable HTTP server (deployed)
 ├── dist/                  # Compiled JavaScript (generated)
 ├── package.json
 ├── tsconfig.json
-└── README.md
+├── railway.json          # Railway deployment config
+├── README.md
+└── MCP_COMPLETE_REFERENCE.txt  # Complete reference guide
 ```
 
 ### Building
@@ -158,7 +266,10 @@ npm run build
 
 The project uses TypeScript with strict type checking. Configuration is in `tsconfig.json`.
 
+## Documentation
+
+- **MCP_COMPLETE_REFERENCE.txt** - Complete reference with SSE details, tool descriptions, and agent integration examples
+
 ## License
 
 MIT
-

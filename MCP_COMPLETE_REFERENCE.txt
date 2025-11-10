@@ -4,128 +4,186 @@
 
 BASE URL: https://web-production-bd81.up.railway.app
 
+TRANSPORT METHOD: SSE/Streamable HTTP (MCP Protocol over HTTP)
+
 ================================================================================
-                           AVAILABLE TOOLS/ENDPOINTS
+                         HOW SSE/STREAMABLE HTTP WORKS
 ================================================================================
 
-1. HEALTH CHECK & API INFO
-   Endpoint: GET /
-   Description: Get server information and available endpoints
-   URL: https://web-production-bd81.up.railway.app/
-   Response: Server info with all endpoints listed
+The server uses SSE (Server-Sent Events) / Streamable HTTP transport, which
+implements the MCP (Model Context Protocol) over HTTP. This allows:
 
---------------------------------------------------------------------------------
+1. MCP PROTOCOL COMMUNICATION:
+   - Uses JSON-RPC 2.0 protocol
+   - Messages sent via HTTP POST requests
+   - Responses streamed via Server-Sent Events (SSE)
+   - Maintains persistent connections for real-time communication
 
-2. LIST ALL TOOLS
-   Endpoint: GET /api/tools
-   Description: List all available API tools
-   URL: https://web-production-bd81.up.railway.app/api/tools
-   Response: Array of all available tools with descriptions
+2. HOW IT WORKS:
+   - Client connects via HTTP GET request with Accept: text/event-stream
+   - Server establishes SSE stream and returns session ID
+   - Client sends JSON-RPC messages via HTTP POST requests
+   - Server responds with JSON-RPC messages over SSE stream
+   - Supports bidirectional communication (POST for requests, SSE for responses)
 
---------------------------------------------------------------------------------
+3. AGENT INTEGRATION:
+   - Agents automatically discover available tools via tools/list method
+   - Agents understand tool schemas and descriptions
+   - Agents select appropriate tools based on user queries
+   - Agents execute tools via tools/call method
+   - Agents receive structured responses in MCP format
 
-3. GET MEMBERS
+4. AUTO-DISCOVERY:
+   - Agent connects to MCP server
+   - Agent calls tools/list to discover all available tools
+   - Agent receives tool definitions with schemas
+   - Agent can automatically select and use tools based on user queries
+
+5. QUERY PROCESSING:
+   - User asks: "How many members do we have?"
+   - Agent analyzes query and matches to analyze_data tool
+   - Agent calls tools/call with appropriate parameters
+   - Server executes query against Supabase
+   - Server returns response in MCP format
+   - Agent formats and presents response to user
+
+================================================================================
+                           AVAILABLE MCP TOOLS
+================================================================================
+
+The server provides 6 MCP tools that can be discovered and used by agents:
+
+1. GET MEMBERS
    Tool Name: get_members
-   Endpoint: GET /api/members
    Description: Retrieve member data from fact_member table
-   URL: https://web-production-bd81.up.railway.app/api/members
    
-   Parameters (Query String):
-   - limit (number): Maximum number of records to return
-   - order (string): Order by field (e.g., 'id.asc', 'created_at.desc')
-   - select (string): Comma-separated list of fields to select
+   Parameters:
+   - limit (number, optional): Maximum number of records to return
+   - order (string, optional): Order by field (e.g., 'id.asc', 'created_at.desc')
+   - select (string, optional): Comma-separated list of fields to select
    
-   Example: GET /api/members?limit=10&order=id.asc
-
---------------------------------------------------------------------------------
-
-4. GET RESORTS
-   Tool Name: get_resorts
-   Endpoint: GET /api/resorts
-   Description: Retrieve resort data from fact_resort table
-   URL: https://web-production-bd81.up.railway.app/api/resorts
-   
-   Parameters (Query String):
-   - limit (number): Maximum number of records to return
-   - order (string): Order by field
-   - select (string): Comma-separated list of fields to select
-   
-   Example: GET /api/resorts?limit=20&order=rating.desc
-
---------------------------------------------------------------------------------
-
-5. GET FEEDBACK
-   Tool Name: get_feedback
-   Endpoint: GET /api/feedback
-   Description: Retrieve feedback data from fact_feedback table
-   URL: https://web-production-bd81.up.railway.app/api/feedback
-   
-   Parameters (Query String):
-   - limit (number): Maximum number of records to return
-   - order (string): Order by field
-   - select (string): Comma-separated list of fields to select
-   
-   Example: GET /api/feedback?limit=50&order=created_at.desc
-
---------------------------------------------------------------------------------
-
-6. GET EVENTS
-   Tool Name: get_events
-   Endpoint: GET /api/events
-   Description: Retrieve event data from fact_event table
-   URL: https://web-production-bd81.up.railway.app/api/events
-   
-   Parameters (Query String):
-   - limit (number): Maximum number of records to return
-   - order (string): Order by field
-   - select (string): Comma-separated list of fields to select
-   
-   Example: GET /api/events?limit=30&order=date.asc
-
---------------------------------------------------------------------------------
-
-7. ANALYZE DATA
-   Tool Name: analyze_data
-   Endpoint: POST /api/analyze
-   Description: Perform analytical queries across Supabase tables
-   URL: https://web-production-bd81.up.railway.app/api/analyze
-   Method: POST
-   Headers: Content-Type: application/json
-   
-   Body Parameters:
-   - table (required, string): One of:
-     * fact_member
-     * fact_resort
-     * fact_feedback
-     * fact_event
-   - operation (required, string): One of:
-     * count - Count records
-     * list - List all records
-     * aggregate - Aggregate data
-   - field (optional, string): Field name for aggregation operations
-   
-   Example Body:
+   Example MCP Call:
    {
-     "table": "fact_member",
-     "operation": "count"
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {
+       "name": "get_members",
+       "arguments": {
+         "limit": 10,
+         "order": "id.asc"
+       }
+     },
+     "id": 1
    }
 
 --------------------------------------------------------------------------------
 
-8. QUERY TABLE WITH FILTERS
-   Tool Name: query_table
-   Endpoint: POST /api/query
-   Description: Generic query tool with advanced filtering capabilities
-   URL: https://web-production-bd81.up.railway.app/api/query
-   Method: POST
-   Headers: Content-Type: application/json
+2. GET RESORTS
+   Tool Name: get_resorts
+   Description: Retrieve resort data from fact_resort table
    
-   Body Parameters:
-   - table (required, string): One of:
-     * fact_member
-     * fact_resort
-     * fact_feedback
-     * fact_event
+   Parameters:
+   - limit (number, optional): Maximum number of records to return
+   - order (string, optional): Order by field
+   - select (string, optional): Comma-separated list of fields to select
+   
+   Example MCP Call:
+   {
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {
+       "name": "get_resorts",
+       "arguments": {
+         "limit": 20,
+         "order": "rating.desc"
+       }
+     },
+     "id": 2
+   }
+
+--------------------------------------------------------------------------------
+
+3. GET FEEDBACK
+   Tool Name: get_feedback
+   Description: Retrieve feedback data from fact_feedback table
+   
+   Parameters:
+   - limit (number, optional): Maximum number of records to return
+   - order (string, optional): Order by field
+   - select (string, optional): Comma-separated list of fields to select
+   
+   Example MCP Call:
+   {
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {
+       "name": "get_feedback",
+       "arguments": {
+         "limit": 50,
+         "order": "created_at.desc"
+       }
+     },
+     "id": 3
+   }
+
+--------------------------------------------------------------------------------
+
+4. GET EVENTS
+   Tool Name: get_events
+   Description: Retrieve event data from fact_event table
+   
+   Parameters:
+   - limit (number, optional): Maximum number of records to return
+   - order (string, optional): Order by field
+   - select (string, optional): Comma-separated list of fields to select
+   
+   Example MCP Call:
+   {
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {
+       "name": "get_events",
+       "arguments": {
+         "limit": 30,
+         "order": "date.asc"
+       }
+     },
+     "id": 4
+   }
+
+--------------------------------------------------------------------------------
+
+5. ANALYZE DATA
+   Tool Name: analyze_data
+   Description: Perform analytical queries across Supabase tables
+   
+   Parameters:
+   - table (required, string): One of: fact_member, fact_resort, fact_feedback, fact_event
+   - operation (required, string): One of: count, list, aggregate
+   - field (optional, string): Field name for aggregation operations
+   
+   Example MCP Call:
+   {
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {
+       "name": "analyze_data",
+       "arguments": {
+         "table": "fact_member",
+         "operation": "count"
+       }
+     },
+     "id": 5
+   }
+
+--------------------------------------------------------------------------------
+
+6. QUERY TABLE WITH FILTERS
+   Tool Name: query_table
+   Description: Generic query tool with advanced filtering capabilities
+   
+   Parameters:
+   - table (required, string): One of: fact_member, fact_resort, fact_feedback, fact_event
    - filters (optional, object): Filter conditions
      * Simple filter: {"status": "active"}
      * Advanced filter: {"rating": {"operator": "gte", "value": "4"}}
@@ -144,18 +202,26 @@ BASE URL: https://web-production-bd81.up.railway.app
    - is - IS NULL/IS NOT NULL
    - in - IN array
    
-   Example Body:
+   Example MCP Call:
    {
-     "table": "fact_member",
-     "filters": {
-       "status": "active",
-       "rating": {
-         "operator": "gte",
-         "value": "4"
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {
+       "name": "query_table",
+       "arguments": {
+         "table": "fact_member",
+         "filters": {
+           "status": "active",
+           "rating": {
+             "operator": "gte",
+             "value": "4"
+           }
+         },
+         "limit": 10,
+         "order": "id.asc"
        }
      },
-     "limit": 10,
-     "order": "id.asc"
+     "id": 6
    }
 
 ================================================================================
@@ -166,6 +232,53 @@ BASE URL: https://web-production-bd81.up.railway.app
 2. fact_resort - Resort data
 3. fact_feedback - Feedback data
 4. fact_event - Event data
+
+================================================================================
+                         MCP PROTOCOL METHODS
+================================================================================
+
+The server implements standard MCP protocol methods:
+
+1. initialize - Initialize MCP session
+   Method: POST
+   Headers: Accept: text/event-stream, application/json
+   Body: {
+     "jsonrpc": "2.0",
+     "method": "initialize",
+     "params": {
+       "protocolVersion": "2024-11-05",
+       "capabilities": {},
+       "clientInfo": {
+         "name": "client-name",
+         "version": "1.0.0"
+       }
+     },
+     "id": 1
+   }
+
+2. tools/list - List all available tools
+   Method: POST
+   Headers: Content-Type: application/json
+            Accept: application/json, text/event-stream
+   Body: {
+     "jsonrpc": "2.0",
+     "method": "tools/list",
+     "id": 1
+   }
+
+3. tools/call - Call a tool
+   Method: POST
+   Headers: Content-Type: application/json
+            Accept: application/json, text/event-stream
+   Body: {
+     "jsonrpc": "2.0",
+     "method": "tools/call",
+     "params": {
+       "name": "tool_name",
+       "arguments": {...}
+     },
+     "id": 1
+   }
 
 ================================================================================
                               CAPABILITIES
@@ -193,21 +306,38 @@ QUERYING:
 - Multi-condition filtering
 - Sorting and pagination
 
+AUTO-DISCOVERY:
+- Agents can automatically discover all tools
+- Agents understand tool schemas
+- Agents select tools based on user queries
+- Agents execute queries automatically
+
 ================================================================================
-                            RESPONSE FORMAT
+                         RESPONSE FORMAT (MCP)
 ================================================================================
 
 SUCCESS RESPONSE:
 {
-  "success": true,
-  "data": [...],
-  "count": 10
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "JSON data here"
+      }
+    ]
+  }
 }
 
 ERROR RESPONSE:
 {
-  "success": false,
-  "error": "Error message"
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32000,
+    "message": "Error message"
+  }
 }
 
 ================================================================================
@@ -219,70 +349,104 @@ ERROR RESPONSE:
 - CORS enabled for all origins
 
 ================================================================================
-                            EXAMPLE QUERIES
+                      AGENT INTEGRATION EXAMPLES
 ================================================================================
 
-1. Get first 10 members:
-   GET https://web-production-bd81.up.railway.app/api/members?limit=10
+EXAMPLE 1: User asks "How many members do we have?"
 
-2. Count all resorts:
-   POST https://web-production-bd81.up.railway.app/api/analyze
-   Body: {"table": "fact_resort", "operation": "count"}
-
-3. Get active members with rating >= 4:
-   POST https://web-production-bd81.up.railway.app/api/query
-   Body: {
-     "table": "fact_member",
-     "filters": {
-       "status": "active",
-       "rating": {"operator": "gte", "value": "4"}
-     },
-     "limit": 20
+Agent Process:
+1. Connects to MCP server via SSE/Streamable HTTP
+2. Calls tools/list to discover available tools
+3. Analyzes query and matches to analyze_data tool
+4. Calls tools/call with:
+   {
+     "name": "analyze_data",
+     "arguments": {
+       "table": "fact_member",
+       "operation": "count"
+     }
    }
+5. Receives response: {"count": 150}
+6. Responds to user: "You have 150 members"
 
-4. Get top 5 resorts by rating:
-   GET https://web-production-bd81.up.railway.app/api/resorts?limit=5&order=rating.desc
+--------------------------------------------------------------------------------
 
-5. Get feedback ordered by date:
-   GET https://web-production-bd81.up.railway.app/api/feedback?limit=50&order=created_at.desc
+EXAMPLE 2: User asks "Show me active members with rating >= 4"
 
-6. List all events:
-   GET https://web-production-bd81.up.railway.app/api/events
-
-7. Analyze member count:
-   POST https://web-production-bd81.up.railway.app/api/analyze
-   Body: {"table": "fact_member", "operation": "count"}
-
-8. Query resorts with filters:
-   POST https://web-production-bd81.up.railway.app/api/query
-   Body: {
-     "table": "fact_resort",
-     "filters": {
-       "rating": {"operator": "gte", "value": "4"}
-     },
-     "limit": 10,
-     "order": "rating.desc"
+Agent Process:
+1. Discovers tools via tools/list
+2. Matches query to query_table tool
+3. Calls tools/call with:
+   {
+     "name": "query_table",
+     "arguments": {
+       "table": "fact_member",
+       "filters": {
+         "status": "active",
+         "rating": {"operator": "gte", "value": "4"}
+       },
+       "limit": 20
+     }
    }
+4. Receives filtered member data
+5. Formats and presents results to user
+
+--------------------------------------------------------------------------------
+
+EXAMPLE 3: User asks "Get top 5 resorts by rating"
+
+Agent Process:
+1. Discovers tools via tools/list
+2. Matches query to get_resorts tool
+3. Calls tools/call with:
+   {
+     "name": "get_resorts",
+     "arguments": {
+       "limit": 5,
+       "order": "rating.desc"
+     }
+   }
+4. Receives sorted resort data
+5. Presents top 5 resorts to user
+
+================================================================================
+                         HOW TO CONNECT AGENTS
+================================================================================
+
+1. CONNECT TO MCP SERVER:
+   - URL: https://web-production-bd81.up.railway.app
+   - Transport: SSE/Streamable HTTP
+   - Protocol: MCP (JSON-RPC 2.0)
+
+2. INITIALIZE SESSION:
+   - Send initialize request via POST
+   - Accept: text/event-stream, application/json
+   - Receive session ID in response
+
+3. DISCOVER TOOLS:
+   - Call tools/list method
+   - Receive all 6 available tools with schemas
+
+4. USE TOOLS:
+   - Agent selects appropriate tool based on user query
+   - Calls tools/call with tool name and arguments
+   - Receives structured response
+   - Formats and presents to user
 
 ================================================================================
                               SUMMARY
 ================================================================================
 
-- 8 total endpoints (1 health check + 7 API endpoints)
+- Transport: SSE/Streamable HTTP (MCP Protocol over HTTP)
+- 6 MCP tools available (auto-discoverable by agents)
 - 4 data tables (members, resorts, feedback, events)
-- 6 MCP tools available
 - Multiple filter operators supported
 - Sorting, limiting, field selection available
 - Analytical operations (count, list, aggregate)
+- Auto-discovery: Agents can automatically discover and use tools
+- Query understanding: Agents understand user queries and select tools
 - No authentication required
 - CORS enabled
-
-================================================================================
-                         POSTMAN COLLECTION
-================================================================================
-
-Import the postman_collection.json file into Postman to get all requests
-pre-configured with examples.
 
 ================================================================================
                          DEPLOYMENT INFORMATION
@@ -292,17 +456,18 @@ Platform: Railway
 URL: https://web-production-bd81.up.railway.app
 Status: Live and operational
 Version: 1.0.0
+Transport: SSE/Streamable HTTP (MCP Protocol)
+Start Command: npm run start:sse
 
 ================================================================================
                          SUPPORT & DOCUMENTATION
 ================================================================================
 
-- POSTMAN_API_DOCS.md - Complete API documentation
-- QUICK_START.md - Quick start guide
-- DEPLOYMENT.md - Deployment instructions
-- README.md - Project overview
+- README.md - Project overview and setup instructions
+- railway.json - Railway deployment configuration
+- src/sse-server.ts - SSE/Streamable HTTP server implementation
+- src/index.ts - stdio MCP server (for local use)
 
 ================================================================================
                               END OF REFERENCE
 ================================================================================
-
