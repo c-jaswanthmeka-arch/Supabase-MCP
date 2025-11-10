@@ -404,22 +404,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 const PORT = process.env.PORT || 3000;
 const httpServer = http.createServer();
 
-// Create transport instance (shared across requests)
-const transport = new StreamableHTTPServerTransport({
-  sessionIdGenerator: () => randomUUID(),
-});
+// Store transports per session
+const transportStore = new Map<string, StreamableHTTPServerTransport>();
 
-// Connect server to transport
-server.connect(transport).catch((error) => {
-  console.error("Failed to connect server to transport:", error);
-  process.exit(1);
-});
+// Create a shared server instance
+const createTransport = (sessionId: string) => {
+  if (!transportStore.has(sessionId)) {
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => sessionId,
+    });
+    server.connect(transport).catch((error) => {
+      console.error("Failed to connect server to transport:", error);
+    });
+    transportStore.set(sessionId, transport);
+  }
+  return transportStore.get(sessionId)!;
+};
 
 httpServer.on("request", async (req, res) => {
   // Enable CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id");
 
   if (req.method === "OPTIONS") {
     res.writeHead(200);
@@ -445,13 +451,74 @@ httpServer.on("request", async (req, res) => {
       }
     }
 
-    // Handle the request using the transport
+    // Get or create session ID
+    let sessionId = req.headers["mcp-session-id"] as string;
+    const isInitializeRequest = 
+      parsedBody && 
+      typeof parsedBody === "object" && 
+      "method" in parsedBody && 
+      parsedBody.method === "initialize";
+
+    // If no session ID, create one and auto-initialize
+    if (!sessionId && req.method === "POST" && parsedBody && !isInitializeRequest) {
+      sessionId = randomUUID();
+      req.headers["mcp-session-id"] = sessionId;
+      
+      // Get or create transport for this session
+      const transport = createTransport(sessionId);
+      
+      // First, handle initialize internally
+      const initReq = { ...req, headers: { ...req.headers, "mcp-session-id": sessionId } };
+      const initializePayload = {
+        jsonrpc: "2.0",
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: {
+            name: "devrev-mcp-client",
+            version: "1.0.0"
+          }
+        },
+        id: 0
+      };
+      
+      // Create a mock response for initialization
+      const initRes = {
+        writeHead: () => {},
+        setHeader: () => {},
+        end: () => {},
+        headersSent: false
+      };
+      
+      // Initialize session
+      await transport.handleRequest(initReq as any, initRes as any, initializePayload);
+      
+      // Now handle the actual request
+      await transport.handleRequest(initReq as any, res, parsedBody);
+      return;
+    }
+
+    // Use existing session or create new one
+    if (!sessionId) {
+      sessionId = randomUUID();
+    }
+    
+    const transport = createTransport(sessionId);
     await transport.handleRequest(req, res, parsedBody);
   } catch (error) {
     console.error("Request handling error:", error);
+    console.error("Error details:", error instanceof Error ? error.stack : String(error));
     if (!res.headersSent) {
       res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Internal server error" }));
+      res.end(JSON.stringify({ 
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: error instanceof Error ? error.message : String(error)
+        },
+        id: null
+      }));
     }
   }
 });
