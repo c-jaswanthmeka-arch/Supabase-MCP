@@ -444,6 +444,50 @@ const tools: Tool[] = [
     },
   },
   {
+    name: "get_member_aggregated",
+    description:
+      "Retrieve aggregated member data from the fact_member_aggregated table. Use for quick numerical queries like 'Total red members', 'Total active members by region', etc. This table provides pre-aggregated member statistics for faster queries. Use ONLY when user wants to SEE aggregated member records (not count them). When user asks for 'all' records, omit the limit parameter. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Maximum number of records to return",
+        },
+        order: {
+          type: "string",
+          description: "Order by field (e.g., 'id.asc', 'created_at.desc')",
+        },
+        select: {
+          type: "string",
+          description: "Comma-separated list of fields to select",
+        },
+      },
+    },
+  },
+  {
+    name: "get_resort_aggregated",
+    description:
+      "Retrieve aggregated resort data from the fact_resort_aggregated table. Use for quick numerical queries like 'Sales in July in Acacia', 'Total revenue by resort', etc. This table provides pre-aggregated resort statistics for faster queries. Use ONLY when user wants to SEE aggregated resort records (not count them). When user asks for 'all' records, omit the limit parameter. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "number",
+          description: "Maximum number of records to return",
+        },
+        order: {
+          type: "string",
+          description: "Order by field (e.g., 'id.asc', 'created_at.desc')",
+        },
+        select: {
+          type: "string",
+          description: "Comma-separated list of fields to select",
+        },
+      },
+    },
+  },
+  {
     name: "analyze_data",
     description:
       "Perform analytical queries across the Supabase tables. This is the ONLY correct tool for counting records and aggregations. NEVER use get_members/get_resorts/get_feedback/get_events for counting. Use when user asks for 'count', 'total number', 'how many', 'number of', 'average', 'min', 'max', 'sum'. Supports counting filtered results if filters are provided. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'log_date' (NOT 'feedback_date') for fact_feedback. Format: filters: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. For aggregations, specify the field parameter (e.g., 'total_revenue_inr' for revenue analysis). Can combine with filters to analyze specific time periods, resorts, or conditions. Use this tool to compare revenue across months, resorts, or regions. For sales analysis: compare revenue between months, identify low-performing periods, analyze occupancy rates. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
@@ -452,8 +496,8 @@ const tools: Tool[] = [
       properties: {
         table: {
           type: "string",
-          enum: ["fact_member", "fact_resort", "fact_feedback", "fact_event"],
-          description: "The table to analyze. MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event'. DO NOT use 'resorts', 'members', 'feedback', or 'events' - always use the 'fact_' prefix.",
+          enum: ["fact_member", "fact_resort", "fact_feedback", "fact_event", "fact_member_aggregated", "fact_resort_aggregated"],
+          description: "The table to analyze. MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event', 'fact_member_aggregated', 'fact_resort_aggregated'. Use aggregated tables (fact_member_aggregated, fact_resort_aggregated) for quick numerical queries like 'Total red members' or 'Sales in July in Acacia'. DO NOT use 'resorts', 'members', 'feedback', or 'events' - always use the 'fact_' prefix.",
         },
         operation: {
           type: "string",
@@ -482,8 +526,8 @@ const tools: Tool[] = [
       properties: {
         table: {
           type: "string",
-          enum: ["fact_member", "fact_resort", "fact_feedback", "fact_event"],
-          description: "The table to query. MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event'. DO NOT use 'resorts', 'members', 'feedback', or 'events' - always use the 'fact_' prefix.",
+          enum: ["fact_member", "fact_resort", "fact_feedback", "fact_event", "fact_member_aggregated", "fact_resort_aggregated"],
+          description: "The table to query. MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event', 'fact_member_aggregated', 'fact_resort_aggregated'. Use aggregated tables (fact_member_aggregated, fact_resort_aggregated) for quick numerical queries like 'Total red members' or 'Sales in July in Acacia'. DO NOT use 'resorts', 'members', 'feedback', or 'events' - always use the 'fact_' prefix.",
         },
         filters: {
           type: "object",
@@ -722,6 +766,65 @@ const tools: Tool[] = [
         year: { type: "string", description: "Year to analyze (e.g., '2025')" }
       }
     }
+  },
+  {
+    name: "insights_monthly_sales_comparison",
+    description:
+      "Compare sales between two months to identify resorts with low sales. Input: month1 ('YYYY-MM'), month2 ('YYYY-MM'). Output: JSON with resorts showing lower sales in month2 compared to month1, with revenue deltas and percentage changes. Use for questions like 'Which resorts showed low sales in October than in September 2025'. Do not expose internal steps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        month1: { type: "string", description: "First month to compare (YYYY-MM, e.g., '2025-09')" },
+        month2: { type: "string", description: "Second month to compare (YYYY-MM, e.g., '2025-10')" }
+      },
+      required: ["month1", "month2"]
+    }
+  },
+  {
+    name: "insights_resort_revenue_reasons",
+    description:
+      "Analyze reasons for lower revenue for a specific resort in a specific month. Combines resort performance data, events, and feedback to identify root causes. Input: resort_name, month ('YYYY-MM'). Output: JSON with revenue comparison vs previous month, identified reasons (events, feedback, occupancy), and key drivers. Use for questions like 'What were the reasons for lower revenue in Acacia Palms in October 2025'. Do not expose internal steps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resort_name: { type: "string", description: "Name of the resort (e.g., 'Acacia Palms')" },
+        month: { type: "string", description: "Month to analyze (YYYY-MM, e.g., '2025-10')" }
+      },
+      required: ["resort_name", "month"]
+    }
+  },
+  {
+    name: "insights_revenue_feedback_correlation",
+    description:
+      "Identify resorts where lower revenue in a month correlates with negative feedback from previous months. Input: month ('YYYY-MM') of the revenue month to evaluate. Output: JSON with resorts showing revenue decline, associated negative feedback themes, and correlation strength. Use for questions like 'Which resorts saw a lower revenue in a month with a co-relation to negative feedback'. Do not expose internal steps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        month: { type: "string", description: "Month to analyze (YYYY-MM, e.g., '2025-10')" }
+      },
+      required: ["month"]
+    }
+  },
+  {
+    name: "insights_unpaid_asf_feedback",
+    description:
+      "Find feedback from members who have not paid Annual Subscription Fee (ASF) for 2 years. Identifies members with unpaid ASF for 2+ years and retrieves their feedback. Output: JSON with member details, ASF payment status, and their feedback (if any). Use for questions like 'Is there any negative feedback from members who have not paid ASF for 2 years, what is it'. Do not expose internal steps.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "insights_resort_event_decline",
+    description:
+      "Identify external events that led to revenue decline for a specific resort. Analyzes events in the resort's region/time period and correlates with revenue drops. Input: resort_name. Output: JSON with events affecting the resort, revenue impact, and event details. Use for questions like 'What external events led to decline in revenue for Saj resort'. Do not expose internal steps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        resort_name: { type: "string", description: "Name of the resort (e.g., 'Saj')" }
+      },
+      required: ["resort_name"]
+    }
   }
 ];
 
@@ -815,6 +918,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         if (args?.select) eventParams.select = String(args.select);
 
         const data = await querySupabaseTable("fact_event", eventParams);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "get_member_aggregated": {
+        const memberAggParams: Record<string, string> = {};
+        if (args?.limit) {
+          memberAggParams.limit = String(args.limit);
+        } else {
+          memberAggParams.limit = "10000";
+        }
+        if (args?.order) memberAggParams.order = String(args.order);
+        if (args?.select) memberAggParams.select = String(args.select);
+
+        const data = await querySupabaseTable("fact_member_aggregated", memberAggParams);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(data, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "get_resort_aggregated": {
+        const resortAggParams: Record<string, string> = {};
+        if (args?.limit) {
+          resortAggParams.limit = String(args.limit);
+        } else {
+          resortAggParams.limit = "10000";
+        }
+        if (args?.order) resortAggParams.order = String(args.order);
+        if (args?.select) resortAggParams.select = String(args.select);
+
+        const data = await querySupabaseTable("fact_resort_aggregated", resortAggParams);
         return {
           content: [
             {
@@ -1844,6 +1989,362 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             average_monthly_revenue: monthlyTrends.reduce((a:any,m:any)=>a+m.total_revenue,0)/monthlyTrends.length,
             peak_month: peakMonths[0],
             low_month: lowMonths[0]
+          }
+        }, null, 2) }] };
+      }
+
+      case "insights_monthly_sales_comparison": {
+        const { month1, month2 } = args as { month1: string; month2: string };
+        const r1 = monthRange(month1);
+        const r2 = monthRange(month2);
+
+        const resorts1 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r1.start, lte: r1.end } }));
+        const resorts2 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r2.start, lte: r2.end } }));
+
+        const rollByResort = (rows: any[]) => {
+          const g = groupBy(rows, (r:any)=>r.resort_name || "Unknown");
+          const out: Record<string, any> = {};
+          for (const [k, arr] of Object.entries(g)) {
+            out[k] = {
+              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+              occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length : 0,
+              region: arr[0]?.resort_region ?? null
+            };
+          }
+          return out;
+        };
+
+        const A = rollByResort(resorts1);
+        const B = rollByResort(resorts2);
+
+        const lowSales: any[] = [];
+        for (const [resort, m2] of Object.entries(B)) {
+          const m1 = A[resort] || { total_revenue: 0 };
+          const delta = safeNumber((m2 as any).total_revenue) - safeNumber(m1.total_revenue);
+          const pctChange = m1.total_revenue ? (delta / m1.total_revenue) * 100 : 0;
+          if (delta < 0) {
+            lowSales.push({
+              resort_name: resort,
+              month1_revenue_inr: m1.total_revenue,
+              month2_revenue_inr: (m2 as any).total_revenue,
+              revenue_delta_inr: delta,
+              percentage_change: +pctChange.toFixed(1),
+              region: (m2 as any).region
+            });
+          }
+        }
+
+        lowSales.sort((a,b)=>a.revenue_delta_inr - b.revenue_delta_inr);
+
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          month1,
+          month2,
+          resorts_with_low_sales: lowSales,
+          summary: {
+            total_resorts_with_decline: lowSales.length,
+            largest_decline: lowSales[0] || null
+          }
+        }, null, 2) }] };
+      }
+
+      case "insights_resort_revenue_reasons": {
+        const { resort_name, month } = args as { resort_name: string; month: string };
+        const curr = monthRange(month);
+        const prevYm = previousMonth(month);
+        const prev = monthRange(prevYm);
+
+        const resortFiltersCurr: Record<string, any> = { 
+          activity_date: { gte: curr.start, lte: curr.end },
+          resort_name: { operator: "ilike", value: resort_name }
+        };
+        const resortFiltersPrev: Record<string, any> = { 
+          activity_date: { gte: prev.start, lte: prev.end },
+          resort_name: { operator: "ilike", value: resort_name }
+        };
+
+        const resortsCurr = await querySupabaseTable("fact_resort", buildQuery(resortFiltersCurr));
+        const resortsPrev = await querySupabaseTable("fact_resort", buildQuery(resortFiltersPrev));
+
+        const roll = (rows: any[]) => {
+          if (!rows.length) return { total_revenue: 0, occupancy_avg: 0, member_rooms: 0, total_rooms: 0 };
+          return {
+            total_revenue: rows.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+            occupancy_avg: rows.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/rows.length,
+            member_rooms: rows.reduce((a:any,r:any)=>a+safeNumber(r.member_rooms_booked),0),
+            total_rooms: rows.reduce((a:any,r:any)=>a+safeNumber(r.total_rooms_available),0),
+            region: rows[0]?.resort_region ?? null
+          };
+        };
+
+        const currData = roll(resortsCurr);
+        const prevData = roll(resortsPrev);
+        const revenueDelta = currData.total_revenue - prevData.total_revenue;
+        const revenuePctChange = prevData.total_revenue ? (revenueDelta / prevData.total_revenue) * 100 : 0;
+
+        const region = currData.region || prevData.region;
+        const eventFilters: Record<string, any> = { event_date: { gte: curr.start, lte: curr.end } };
+        if (region) eventFilters.impact_region = { operator: "ilike", value: region };
+        const events = await querySupabaseTable("fact_event", buildQuery(eventFilters));
+
+        const feedbackFilters: Record<string, any> = { 
+          log_date: { gte: prev.start, lte: curr.end },
+          resort_name_fk: { operator: "ilike", value: resort_name }
+        };
+        const feedback = await querySupabaseTable("fact_feedback", buildQuery(feedbackFilters));
+        const negativeFeedback = (feedback || []).filter((f:any)=>safeNumber(f.nps_score) < 7 || (f.sentiment && f.sentiment.toLowerCase().includes('negative')));
+
+        const reasons: string[] = [];
+        const eventDetails: any[] = [];
+        if (events && events.length) {
+          const weatherEvents = events.filter((e:any)=>e.event_type === "Major Weather");
+          const competitorEvents = events.filter((e:any)=>e.event_type === "Competitor Promo");
+          const localEvents = events.filter((e:any)=>e.event_type === "Local Event");
+          if (weatherEvents.length) {
+            reasons.push("Weather events");
+            eventDetails.push(...weatherEvents.map((e:any)=>({ type: "Weather", date: e.event_date, details: e.details_description })));
+          }
+          if (competitorEvents.length) {
+            reasons.push("Competitor promotions");
+            eventDetails.push(...competitorEvents.map((e:any)=>({ type: "Competitor", date: e.event_date, competitor: e.competitor_name, details: e.details_description })));
+          }
+          if (localEvents.length) {
+            reasons.push("Local events");
+            eventDetails.push(...localEvents.map((e:any)=>({ type: "Local Event", date: e.event_date, details: e.details_description })));
+          }
+        }
+        if (negativeFeedback.length) {
+          reasons.push("Negative feedback from previous period");
+        }
+        if (currData.occupancy_avg < prevData.occupancy_avg - 5) {
+          reasons.push("Lower occupancy rate");
+        }
+
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          resort_name,
+          month,
+          revenue_comparison: {
+            previous_month: prevData.total_revenue,
+            current_month: currData.total_revenue,
+            delta_inr: revenueDelta,
+            percentage_change: +revenuePctChange.toFixed(1)
+          },
+          occupancy_comparison: {
+            previous_month: prevData.occupancy_avg,
+            current_month: currData.occupancy_avg,
+            delta: +(currData.occupancy_avg - prevData.occupancy_avg).toFixed(1)
+          },
+          identified_reasons: reasons,
+          events: eventDetails,
+          negative_feedback_count: negativeFeedback.length,
+          negative_feedback_themes: negativeFeedback.length > 0 ? topKeywords(negativeFeedback.map((f:any)=>f.details_text || "").filter(Boolean), 5) : []
+        }, null, 2) }] };
+      }
+
+      case "insights_revenue_feedback_correlation": {
+        const { month } = args as { month: string };
+        const curr = monthRange(month);
+        const prevYm = previousMonth(month);
+        const prev = monthRange(prevYm);
+
+        const resortsCurr = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: curr.start, lte: curr.end } }));
+        const resortsPrev = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: prev.start, lte: prev.end } }));
+        const feedback = await querySupabaseTable("fact_feedback", buildQuery({ log_date: { gte: prev.start, lte: prev.end } }));
+
+        const rollByResort = (rows: any[]) => {
+          const g = groupBy(rows, (r:any)=>r.resort_name || "Unknown");
+          const out: Record<string, any> = {};
+          for (const [k, arr] of Object.entries(g)) {
+            out[k] = {
+              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+              occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length : 0
+            };
+          }
+          return out;
+        };
+
+        const A = rollByResort(resortsPrev);
+        const B = rollByResort(resortsCurr);
+
+        const fbByResort = groupBy(feedback || [], (f:any)=>f.resort_name_fk || "Unknown");
+        const negativeFbByResort: Record<string, any[]> = {};
+        for (const [resort, fbs] of Object.entries(fbByResort)) {
+          const neg = (fbs as any[]).filter((f:any)=>safeNumber(f.nps_score) < 7 || (f.sentiment && f.sentiment.toLowerCase().includes('negative')));
+          if (neg.length) negativeFbByResort[resort] = neg;
+        }
+
+        const correlated: any[] = [];
+        for (const [resort, m2] of Object.entries(B)) {
+          const m1 = A[resort] || { total_revenue: 0 };
+          const delta = safeNumber((m2 as any).total_revenue) - safeNumber(m1.total_revenue);
+          const pctChange = m1.total_revenue ? (delta / m1.total_revenue) * 100 : 0;
+          const negFb = negativeFbByResort[resort] || [];
+          if (delta < 0 && negFb.length) {
+            correlated.push({
+              resort_name: resort,
+              revenue_decline_inr: delta,
+              revenue_decline_pct: +pctChange.toFixed(1),
+              negative_feedback_count: negFb.length,
+              feedback_themes: topKeywords(negFb.map((f:any)=>f.details_text || "").filter(Boolean), 5),
+              correlation_strength: negFb.length > 5 ? "Strong" : negFb.length > 2 ? "Moderate" : "Weak"
+            });
+          }
+        }
+
+        correlated.sort((a,b)=>a.revenue_decline_inr - b.revenue_decline_inr);
+
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          month,
+          resorts_with_correlation: correlated,
+          summary: {
+            total_resorts: correlated.length,
+            strongest_correlation: correlated[0] || null
+          }
+        }, null, 2) }] };
+      }
+
+      case "insights_unpaid_asf_feedback": {
+        const twoYearsAgo = new Date();
+        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+        const cutoffDate = twoYearsAgo.toISOString().slice(0, 10);
+
+        const members = await querySupabaseTable("fact_member", buildQuery({}));
+        const unpaidMembers = (members || []).filter((m:any) => {
+          const asfStatus = m.annual_fee_collection_status;
+          const lastPaid = m.last_holiday_date || m.date_joined;
+          if (asfStatus && (asfStatus.toLowerCase() === "unpaid" || asfStatus.toLowerCase() === "late")) {
+            if (!lastPaid || lastPaid < cutoffDate) {
+              return true;
+            }
+          }
+          return false;
+        });
+
+        if (unpaidMembers.length === 0) {
+          return { content: [{ type: "text", text: JSON.stringify({ 
+            message: "No members found with unpaid ASF for 2+ years",
+            members: []
+          }, null, 2) }] };
+        }
+
+        const memberIds = unpaidMembers.map((m:any)=>m.member_id);
+        const feedbackFilters: Record<string, any> = { 
+          member_id_fk: { operator: "in", value: memberIds }
+        };
+        const feedback = await querySupabaseTable("fact_feedback", buildQuery(feedbackFilters));
+        const fbByMember = groupBy(feedback || [], (f:any)=>f.member_id_fk || "Unknown");
+
+        const result = unpaidMembers.map((m:any) => {
+          const memberFb = fbByMember[m.member_id] || [];
+          const negativeFb = memberFb.filter((f:any)=>safeNumber(f.nps_score) < 7 || (f.sentiment && f.sentiment.toLowerCase().includes('negative')));
+          return {
+            member_id: m.member_id,
+            member_name: `${m.member_first_name || ""} ${m.member_last_name || ""}`.trim(),
+            membership_tier: m.membership_tier,
+            annual_fee_status: m.annual_fee_collection_status,
+            last_holiday_date: m.last_holiday_date,
+            date_joined: m.date_joined,
+            total_feedback_count: memberFb.length,
+            negative_feedback_count: negativeFb.length,
+            negative_feedback: negativeFb.length > 0 ? negativeFb.map((f:any)=>({
+              date: f.log_date,
+              resort: f.resort_name_fk,
+              nps_score: f.nps_score,
+              sentiment: f.sentiment,
+              details: f.details_text
+            })) : []
+          };
+        });
+
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          total_unpaid_members: result.length,
+          members_with_feedback: result.filter((m:any)=>m.total_feedback_count > 0).length,
+          members_with_negative_feedback: result.filter((m:any)=>m.negative_feedback_count > 0).length,
+          members: result
+        }, null, 2) }] };
+      }
+
+      case "insights_resort_event_decline": {
+        const { resort_name } = args as { resort_name: string };
+        
+        const resorts = await querySupabaseTable("fact_resort", buildQuery({ 
+          resort_name: { operator: "ilike", value: resort_name }
+        }));
+        
+        if (!resorts || resorts.length === 0) {
+          return { content: [{ type: "text", text: JSON.stringify({ 
+            message: `Resort '${resort_name}' not found`,
+            events: []
+          }, null, 2) }] };
+        }
+
+        const resort = resorts[0];
+        const region = resort.resort_region;
+        const resortDates = resorts.map((r:any)=>r.activity_date).filter(Boolean);
+        if (resortDates.length === 0) {
+          return { content: [{ type: "text", text: JSON.stringify({ 
+            message: "No activity dates found for resort",
+            events: []
+          }, null, 2) }] };
+        }
+
+        const minDate = Math.min(...resortDates.map((d:any)=>new Date(d).getTime()));
+        const maxDate = Math.max(...resortDates.map((d:any)=>new Date(d).getTime()));
+        const startDate = new Date(minDate).toISOString().slice(0, 10);
+        const endDate = new Date(maxDate).toISOString().slice(0, 10);
+
+        const eventFilters: Record<string, any> = { event_date: { gte: startDate, lte: endDate } };
+        if (region) eventFilters.impact_region = { operator: "ilike", value: region };
+        const events = await querySupabaseTable("fact_event", buildQuery(eventFilters));
+
+        const rollByResort = (rows: any[]) => {
+          const g = groupBy(rows, (r:any)=>r.activity_date ? r.activity_date.substring(0,7) : "Unknown");
+          const out: Record<string, any> = {};
+          for (const [k, arr] of Object.entries(g)) {
+            out[k] = {
+              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+              occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length : 0
+            };
+          }
+          return out;
+        };
+
+        const resortByMonth = rollByResort(resorts);
+        const months = Object.keys(resortByMonth).sort();
+        const revenueDeclines: any[] = [];
+
+        for (let i = 1; i < months.length; i++) {
+          const prevMonth = resortByMonth[months[i-1]];
+          const currMonth = resortByMonth[months[i]];
+          const delta = currMonth.total_revenue - prevMonth.total_revenue;
+          if (delta < 0) {
+            const monthEvents = (events || []).filter((e:any)=>e.event_date && e.event_date.substring(0,7) === months[i]);
+            if (monthEvents.length > 0) {
+              revenueDeclines.push({
+                month: months[i],
+                revenue_decline_inr: delta,
+                revenue_decline_pct: prevMonth.total_revenue ? ((delta / prevMonth.total_revenue) * 100).toFixed(1) : 0,
+                events: monthEvents.map((e:any)=>({
+                  event_type: e.event_type,
+                  event_date: e.event_date,
+                  impact_region: e.impact_region,
+                  details: e.details_description,
+                  weather_condition: e.weather_condition,
+                  competitor_name: e.competitor_name,
+                  relevance_score: e.relevance_score
+                }))
+              });
+            }
+          }
+        }
+
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          resort_name,
+          region,
+          analysis_period: { start_date: startDate, end_date: endDate },
+          revenue_declines_with_events: revenueDeclines,
+          summary: {
+            total_decline_periods: revenueDeclines.length,
+            total_events: revenueDeclines.reduce((a:any,r:any)=>a+r.events.length, 0)
           }
         }, null, 2) }] };
       }
