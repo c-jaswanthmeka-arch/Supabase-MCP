@@ -358,7 +358,7 @@ const tools: Tool[] = [
   {
     name: "get_members",
     description:
-      "Retrieve member data from the fact_member table. Use ONLY when user wants to SEE member records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. Column names: 'date_joined' for date queries (NOT 'joining_date'), 'is_active' for active status (NOT 'status'), 'membership_tier' for tier (e.g., 'Red', 'White'), 'home_region' for region, 'lifetime_value_inr' for customer value. Use to analyze customer segments by membership_tier, region, or date_joined. For customer analysis: Query members by membership_tier to identify which resorts attract specific customer tiers, cross-reference with resort data to find resorts popular with Red tier customers. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Retrieve member data from the fact_member table. Use ONLY when user wants to SEE member records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. Column names: 'date_joined' for date queries (NOT 'joining_date'), 'is_active' for active status (NOT 'status'), 'membership_tier' for tier (e.g., 'Red', 'White'), 'member_region' for region (NOT 'home_region'), 'lifetime_value' for customer value (NOT 'lifetime_value_inr'). Use to analyze customer segments by membership_tier, region, or date_joined. For customer analysis: Query members by membership_tier to identify which resorts attract specific customer tiers, cross-reference with resort data to find resorts popular with Red tier customers. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -490,7 +490,7 @@ const tools: Tool[] = [
   {
     name: "analyze_data",
     description:
-      "Perform analytical queries across the Supabase tables. This is the ONLY correct tool for counting records and aggregations. NEVER use get_members/get_resorts/get_feedback/get_events for counting. Use when user asks for 'count', 'total number', 'how many', 'number of', 'average', 'min', 'max', 'sum'. Supports counting filtered results if filters are provided. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'log_date' (NOT 'feedback_date') for fact_feedback. Format: filters: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. For aggregations, specify the field parameter (e.g., 'total_revenue_inr' for revenue analysis). Can combine with filters to analyze specific time periods, resorts, or conditions. Use this tool to compare revenue across months, resorts, or regions. For sales analysis: compare revenue between months, identify low-performing periods, analyze occupancy rates. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Perform analytical queries across the Supabase tables. This is the ONLY correct tool for counting records and aggregations. NEVER use get_members/get_resorts/get_feedback/get_events for counting. Use when user asks for 'count', 'total number', 'how many', 'number of', 'average', 'min', 'max', 'sum'. Supports counting filtered results if filters are provided. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'log_date' (NOT 'feedback_date') for fact_feedback. Format: filters: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. For aggregations, specify the field parameter (use 'field' or 'column' - both are accepted). For fact_member: use 'lifetime_value' (NOT 'lifetime_value_inr') for lifetime value aggregations. For fact_resort: use 'total_revenue_inr', 'ancillary_revenue_inr', 'restaurant_revenue_inr' for revenue analysis. Can combine with filters to analyze specific time periods, resorts, or conditions. Use this tool to compare revenue across months, resorts, or regions. For sales analysis: compare revenue between months, identify low-performing periods, analyze occupancy rates. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -971,18 +971,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       }
 
       case "analyze_data": {
-        const { table, operation, field, filters } = args as {
+        const { table, operation, field, column, filters, aggregation } = args as {
           table: string;
           operation: string;
           field?: string;
+          column?: string;
           filters?: Record<string, any>;
+          aggregation?: string;
         };
 
         if (!table || !operation) {
           throw new Error("Table and operation are required");
         }
 
-        const result = await performAnalyticalQuery(table, operation, field, filters);
+        // Accept both 'field' and 'column' for backward compatibility
+        // Also ignore 'aggregation' parameter as it's not needed (operation already specifies it)
+        const fieldName = field || column;
+        
+        // For aggregate operations, field is required
+        if (operation === "aggregate" && !fieldName) {
+          throw new Error("Field is required for aggregate operation (use 'field' or 'column' parameter)");
+        }
+
+        const result = await performAnalyticalQuery(table, operation, fieldName, filters);
         return {
           content: [
             {
@@ -994,15 +1005,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       }
 
       case "query_table": {
-        const { table, filters, limit, order } = args as {
-          table: string;
+        const { table, table_name, filters, limit, order } = args as {
+          table?: string;
+          table_name?: string;
           filters?: Record<string, any>;
           limit?: number;
           order?: string;
         };
 
-        if (!table) {
-          throw new Error("Table name is required");
+        // Accept both 'table' and 'table_name' for backward compatibility
+        const tableName = table || table_name;
+        if (!tableName) {
+          throw new Error("Table name is required (use 'table' or 'table_name' parameter)");
         }
 
         // Validate filters format - must be an object, not an array
@@ -1054,7 +1068,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           });
         }
 
-        const data = await querySupabaseTable(table, queryParams);
+        const data = await querySupabaseTable(tableName, queryParams);
         return {
           content: [
             {
@@ -1546,11 +1560,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const byRegion = groupBy(resorts, (r:any)=>r.resort_region || "Unknown");
         const regionAnalysis = Object.entries(byRegion).map(([region, arr])=>({
           region,
-          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
           average_occupancy: arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length,
           total_rooms_booked: arr.reduce((a:any,r:any)=>a+safeNumber(r.member_rooms_booked),0),
           resort_count: new Set(arr.map((r:any)=>r.resort_name)).size,
-          average_revenue_per_resort: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0) / new Set(arr.map((r:any)=>r.resort_name)).size
+          average_revenue_per_resort: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0) / new Set(arr.map((r:any)=>r.resort_name)).size
         })).sort((a,b)=>b.total_revenue - a.total_revenue);
 
         return { content: [{ type: "text", text: JSON.stringify({ regional_performance: regionAnalysis }, null, 2) }] };
@@ -1569,11 +1583,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const byTheme = groupBy(resorts, (r:any)=>r.resort_theme || "Unknown");
         const themeAnalysis = Object.entries(byTheme).map(([theme, arr])=>({
           theme,
-          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
           average_occupancy: arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length,
           total_bookings: arr.reduce((a:any,r:any)=>a+safeNumber(r.member_rooms_booked),0),
           resort_count: new Set(arr.map((r:any)=>r.resort_name)).size,
-          average_revenue_per_resort: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0) / new Set(arr.map((r:any)=>r.resort_name)).size
+          average_revenue_per_resort: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0) / new Set(arr.map((r:any)=>r.resort_name)).size
         })).sort((a,b)=>b.total_revenue - a.total_revenue);
 
         return { content: [{ type: "text", text: JSON.stringify({ theme_analysis: themeAnalysis }, null, 2) }] };
@@ -1591,20 +1605,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           return { content: [{ type: "text", text: JSON.stringify({ message: "No resort data found" }, null, 2) }] };
         }
 
-        const totalAncillary = resorts.reduce((a:any,r:any)=>a+safeNumber(r.ancillary_revenue_inr),0);
-        const totalRestaurant = resorts.reduce((a:any,r:any)=>a+safeNumber(r.restaurant_revenue_inr),0);
-        const totalRevenue = resorts.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0);
+        const totalAncillary = resorts.reduce((a:any,r:any)=>a+safeNumber(r.activity_revenue || r.ancillary_revenue_inr),0);
+        const totalRestaurant = resorts.reduce((a:any,r:any)=>a+safeNumber(r.restaurant_revenue || r.restaurant_revenue_inr),0);
+        const totalRevenue = resorts.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0);
 
         const byResort = groupBy(resorts, (r:any)=>r.resort_name || "Unknown");
         const resortAnalysis = Object.entries(byResort).map(([resort, arr])=>({
           resort_name: resort,
-          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
-          ancillary_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.ancillary_revenue_inr),0),
-          restaurant_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.restaurant_revenue_inr),0),
-          ancillary_percentage: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0) > 0 ? 
-            +((arr.reduce((a:any,r:any)=>a+safeNumber(r.ancillary_revenue_inr),0) / arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0))*100).toFixed(1) : 0,
-          restaurant_percentage: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0) > 0 ? 
-            +((arr.reduce((a:any,r:any)=>a+safeNumber(r.restaurant_revenue_inr),0) / arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0))*100).toFixed(1) : 0
+          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
+          ancillary_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.activity_revenue || r.ancillary_revenue_inr),0),
+          restaurant_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.restaurant_revenue || r.restaurant_revenue_inr),0),
+          ancillary_percentage: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0) > 0 ? 
+            +((arr.reduce((a:any,r:any)=>a+safeNumber(r.activity_revenue || r.ancillary_revenue_inr),0) / arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0))*100).toFixed(1) : 0,
+          restaurant_percentage: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0) > 0 ? 
+            +((arr.reduce((a:any,r:any)=>a+safeNumber(r.restaurant_revenue || r.restaurant_revenue_inr),0) / arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0))*100).toFixed(1) : 0
         })).sort((a,b)=>b.total_revenue - a.total_revenue);
 
         return { content: [{ type: "text", text: JSON.stringify({ 
@@ -1650,7 +1664,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           const out: Record<string, any> = {};
           for (const [k, arr] of Object.entries(g)) {
             out[k] = {
-              revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+              revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
               region: arr[0]?.resort_region ?? null
             };
           }
@@ -1718,7 +1732,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           const out: Record<string, any> = {};
           for (const [k, arr] of Object.entries(g)) {
             out[k] = {
-              revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+              revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
               occupancy: arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length,
               region: arr[0]?.resort_region ?? null
             };
@@ -1901,7 +1915,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           region: arr[0]?.resort_region ?? null,
           theme: arr[0]?.resort_theme ?? null,
           metrics: {
-            total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+            total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
             average_occupancy: arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length,
             total_bookings: arr.reduce((a:any,r:any)=>a+safeNumber(r.member_rooms_booked),0),
             feedback_count: (fbByResort[resort] || []).length,
@@ -1968,7 +1982,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
         const monthlyTrends = Object.entries(byMonth).map(([month, arr])=>({
           month,
-          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+          total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
           average_occupancy: arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length,
           total_bookings: arr.reduce((a:any,r:any)=>a+safeNumber(r.member_rooms_booked),0),
           feedback_count: (fbByMonth[month] || []).length,
@@ -1995,19 +2009,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
       case "insights_monthly_sales_comparison": {
         const { month1, month2 } = args as { month1: string; month2: string };
+        if (!month1 || !month1.match(/^\d{4}-\d{2}$/) || !month2 || !month2.match(/^\d{4}-\d{2}$/)) {
+          throw new Error("Both months must be in format 'YYYY-MM' (e.g., '2025-09', '2025-10')");
+        }
         const r1 = monthRange(month1);
         const r2 = monthRange(month2);
 
-        const resorts1 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r1.start, lte: r1.end } }));
-        const resorts2 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r2.start, lte: r2.end } }));
+        let resorts1: any[] = [];
+        let resorts2: any[] = [];
+        try {
+          resorts1 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r1.start, lte: r1.end } })) || [];
+          resorts2 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r2.start, lte: r2.end } })) || [];
+        } catch (error) {
+          console.error("Error in insights_monthly_sales_comparison:", error);
+        }
 
         const rollByResort = (rows: any[]) => {
           const g = groupBy(rows, (r:any)=>r.resort_name || "Unknown");
           const out: Record<string, any> = {};
           for (const [k, arr] of Object.entries(g)) {
             out[k] = {
-              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
-              occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length : 0,
+              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
+              occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupied_percentage || r.occupancy_rate_perc),0)/arr.length : 0,
               region: arr[0]?.resort_region ?? null
             };
           }
@@ -2049,6 +2072,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
       case "insights_resort_revenue_reasons": {
         const { resort_name, month } = args as { resort_name: string; month: string };
+        if (!resort_name) {
+          throw new Error("Resort name is required");
+        }
+        if (!month || !month.match(/^\d{4}-\d{2}$/)) {
+          throw new Error("Month must be in format 'YYYY-MM' (e.g., '2025-10')");
+        }
         const curr = monthRange(month);
         const prevYm = previousMonth(month);
         const prev = monthRange(prevYm);
@@ -2062,14 +2091,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           resort_name: { operator: "ilike", value: resort_name }
         };
 
-        const resortsCurr = await querySupabaseTable("fact_resort", buildQuery(resortFiltersCurr));
-        const resortsPrev = await querySupabaseTable("fact_resort", buildQuery(resortFiltersPrev));
+        let resortsCurr: any[] = [];
+        let resortsPrev: any[] = [];
+        let events: any[] = [];
+        let feedback: any[] = [];
+        
+        try {
+          resortsCurr = await querySupabaseTable("fact_resort", buildQuery(resortFiltersCurr)) || [];
+          resortsPrev = await querySupabaseTable("fact_resort", buildQuery(resortFiltersPrev)) || [];
+        } catch (error) {
+          console.error("Error fetching resort data:", error);
+        }
 
         const roll = (rows: any[]) => {
           if (!rows.length) return { total_revenue: 0, occupancy_avg: 0, member_rooms: 0, total_rooms: 0 };
           return {
-            total_revenue: rows.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
-            occupancy_avg: rows.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/rows.length,
+            total_revenue: rows.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
+            occupancy_avg: rows.reduce((a:any,r:any)=>a+safeNumber(r.occupied_percentage || r.occupancy_rate_perc),0)/rows.length,
             member_rooms: rows.reduce((a:any,r:any)=>a+safeNumber(r.member_rooms_booked),0),
             total_rooms: rows.reduce((a:any,r:any)=>a+safeNumber(r.total_rooms_available),0),
             region: rows[0]?.resort_region ?? null
@@ -2082,15 +2120,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const revenuePctChange = prevData.total_revenue ? (revenueDelta / prevData.total_revenue) * 100 : 0;
 
         const region = currData.region || prevData.region;
-        const eventFilters: Record<string, any> = { event_date: { gte: curr.start, lte: curr.end } };
-        if (region) eventFilters.impact_region = { operator: "ilike", value: region };
-        const events = await querySupabaseTable("fact_event", buildQuery(eventFilters));
+        try {
+          const eventFilters: Record<string, any> = { event_date: { gte: curr.start, lte: curr.end } };
+          if (region) eventFilters.impact_region = { operator: "ilike", value: region };
+          events = await querySupabaseTable("fact_event", buildQuery(eventFilters)) || [];
+        } catch (error) {
+          console.error("Error fetching events:", error);
+        }
 
-        const feedbackFilters: Record<string, any> = { 
-          log_date: { gte: prev.start, lte: curr.end },
-          resort_name_fk: { operator: "ilike", value: resort_name }
-        };
-        const feedback = await querySupabaseTable("fact_feedback", buildQuery(feedbackFilters));
+        try {
+          const feedbackFilters: Record<string, any> = { 
+            log_date: { gte: prev.start, lte: curr.end },
+            resort_name_fk: { operator: "ilike", value: resort_name }
+          };
+          feedback = await querySupabaseTable("fact_feedback", buildQuery(feedbackFilters)) || [];
+        } catch (error) {
+          console.error("Error fetching feedback:", error);
+        }
         const negativeFeedback = (feedback || []).filter((f:any)=>safeNumber(f.nps_score) < 7 || (f.sentiment && f.sentiment.toLowerCase().includes('negative')));
 
         const reasons: string[] = [];
@@ -2142,20 +2188,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
       case "insights_revenue_feedback_correlation": {
         const { month } = args as { month: string };
+        if (!month || !month.match(/^\d{4}-\d{2}$/)) {
+          throw new Error("Month must be in format 'YYYY-MM' (e.g., '2025-10')");
+        }
         const curr = monthRange(month);
         const prevYm = previousMonth(month);
         const prev = monthRange(prevYm);
 
-        const resortsCurr = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: curr.start, lte: curr.end } }));
-        const resortsPrev = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: prev.start, lte: prev.end } }));
-        const feedback = await querySupabaseTable("fact_feedback", buildQuery({ log_date: { gte: prev.start, lte: prev.end } }));
+        let resortsCurr: any[] = [];
+        let resortsPrev: any[] = [];
+        let feedback: any[] = [];
+        
+        try {
+          resortsCurr = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: curr.start, lte: curr.end } })) || [];
+          resortsPrev = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: prev.start, lte: prev.end } })) || [];
+          feedback = await querySupabaseTable("fact_feedback", buildQuery({ log_date: { gte: prev.start, lte: prev.end } })) || [];
+        } catch (error) {
+          // If queries fail, return empty results rather than error
+          console.error("Error in insights_revenue_feedback_correlation:", error);
+        }
 
         const rollByResort = (rows: any[]) => {
           const g = groupBy(rows, (r:any)=>r.resort_name || "Unknown");
           const out: Record<string, any> = {};
           for (const [k, arr] of Object.entries(g)) {
             out[k] = {
-              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
               occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length : 0
             };
           }
@@ -2292,16 +2350,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const startDate = new Date(minDate).toISOString().slice(0, 10);
         const endDate = new Date(maxDate).toISOString().slice(0, 10);
 
-        const eventFilters: Record<string, any> = { event_date: { gte: startDate, lte: endDate } };
-        if (region) eventFilters.impact_region = { operator: "ilike", value: region };
-        const events = await querySupabaseTable("fact_event", buildQuery(eventFilters));
+        let events: any[] = [];
+        try {
+          const eventFilters: Record<string, any> = { event_date: { gte: startDate, lte: endDate } };
+          if (region) eventFilters.impact_region = { operator: "ilike", value: region };
+          events = await querySupabaseTable("fact_event", buildQuery(eventFilters)) || [];
+        } catch (error) {
+          console.error("Error fetching events:", error);
+        }
 
         const rollByResort = (rows: any[]) => {
           const g = groupBy(rows, (r:any)=>r.activity_date ? r.activity_date.substring(0,7) : "Unknown");
           const out: Record<string, any> = {};
           for (const [k, arr] of Object.entries(g)) {
             out[k] = {
-              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue_inr),0),
+              total_revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
               occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/arr.length : 0
             };
           }
