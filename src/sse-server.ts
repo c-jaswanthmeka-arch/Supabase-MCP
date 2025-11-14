@@ -133,6 +133,12 @@ function buildQuery(filters?: Record<string, any>): Record<string, string> {
         const list = val.map(v => typeof v === "string" ? `"${v}"` : v).join(",");
         qp[key] = `in.(${list})`;
       } else {
+        // Automatically add wildcards for ilike and like operators for partial matching
+        if ((op === 'ilike' || op === 'like') && typeof val === 'string') {
+          // Only add wildcards if they're not already present
+          if (!val.startsWith('%')) val = '%' + val;
+          if (!val.endsWith('%')) val = val + '%';
+        }
         qp[key] = `${op}.${val}`;
       }
     } else if (value && typeof value === "object" && ("gte" in value || "lte" in value || "gt" in value || "lt" in value)) {
@@ -252,7 +258,13 @@ async function performAnalyticalQuery(
         Object.entries(filters).forEach(([key, value]) => {
           if (typeof value === 'object' && value !== null && 'operator' in value) {
             const op = (value as any).operator || 'eq';
-            const val = (value as any).value;
+            let val = (value as any).value;
+            // Automatically add wildcards for ilike and like operators for partial matching
+            if ((op === 'ilike' || op === 'like') && typeof val === 'string') {
+              // Only add wildcards if they're not already present
+              if (!val.startsWith('%')) val = '%' + val;
+              if (!val.endsWith('%')) val = val + '%';
+            }
             queryParams[key] = `${op}.${val}`;
           } else if (typeof value === 'object' && value !== null && ('gte' in value || 'lte' in value || 'gt' in value || 'lt' in value)) {
             if ('gte' in value) {
@@ -380,7 +392,7 @@ const tools: Tool[] = [
   {
     name: "get_resorts",
     description:
-      "Retrieve resort data from the fact_resort table. Use ONLY when user wants to SEE resort records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. Column names: 'activity_date' for date queries, 'resort_name' for resort name (use 'ilike' operator for case-insensitive matching), 'resort_region' for region, 'total_revenue_inr', 'ancillary_revenue_inr', 'restaurant_revenue_inr' for revenue, 'occupancy_rate_perc', 'member_rooms_booked', 'total_rooms_available' for occupancy. Use to analyze resort performance, compare revenue across time periods, identify trends, and correlate with events or feedback. For sales analysis: Query resort data for specific months/resorts, compare revenue and occupancy rates, identify low-performing periods. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Retrieve resort data from the fact_resort table. Use ONLY when user wants to SEE resort records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. NOTE: This tool does NOT support filtering. For filtered queries (by theme, region, location, etc.), use 'query_table' with table: 'fact_resort' and appropriate filters. Column names: 'activity_date' for date queries, 'resort_name' for resort name, 'resort_theme' for theme (e.g., 'Beach', 'Hill Station', 'Waterpark'), 'resort_region' for region (e.g., 'West', 'South', 'North', 'East'), 'total_revenue', 'restaurant_revenue', 'activity_revenue' for revenue, 'occupied_percentage', 'member_rooms_booked', 'total_rooms_available' for occupancy. Use to analyze resort performance, compare revenue across time periods, identify trends, and correlate with events or feedback. For sales analysis: Query resort data for specific months/resorts, compare revenue and occupancy rates, identify low-performing periods. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -402,7 +414,7 @@ const tools: Tool[] = [
   {
     name: "get_feedback",
     description:
-      "Retrieve feedback data from the fact_feedback table. Use ONLY for simple feedback retrieval without filters. For questions like 'What was the feedback on [resort] in [month]?' or 'Show me feedback for [resort]', use query_table or insights_resort_feedback_analysis instead. Use ONLY when user wants to SEE feedback records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. Column names: 'log_date' (NOT 'feedback_date') for date queries, 'resort_name_fk' for resort name, 'member_id_fk' for member, 'nps_score' for NPS score, 'csat_score' for CSAT score, 'sentiment' for sentiment, 'details_text' for feedback text. IMPORTANT: For filtered feedback queries (by resort, date, etc.), use query_table or insights_resort_feedback_analysis. Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Retrieve feedback data from the fact_feedback table. Use ONLY for simple feedback retrieval without filters. For questions like 'What was the feedback on [resort] in [month]?' or 'Show me feedback for [resort]', use query_table or insights_resort_feedback_analysis instead. Use ONLY when user wants to SEE feedback records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. Column names: 'feedback_date' (NOT 'log_date') for date queries, 'resort_name' (NOT 'resort_name_fk') for resort name, 'member_id_fk' for member, 'nps_score' for NPS score, 'csat_score' for CSAT score, 'sentiment' for sentiment, 'issue_details_text' (NOT 'details_text') for feedback text. IMPORTANT: For filtered feedback queries (by resort, date, etc.), use query_table or insights_resort_feedback_analysis. Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -490,7 +502,7 @@ const tools: Tool[] = [
   {
     name: "analyze_data",
     description:
-      "Perform analytical queries across the Supabase tables. This is the ONLY correct tool for counting records and aggregations. NEVER use get_members/get_resorts/get_feedback/get_events for counting. Use when user asks for 'count', 'total number', 'how many', 'number of', 'average', 'min', 'max', 'sum'. Supports counting filtered results if filters are provided. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'log_date' (NOT 'feedback_date') for fact_feedback. Format: filters: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. For aggregations, specify the field parameter (use 'field' or 'column' - both are accepted). For fact_member: use 'lifetime_value' (NOT 'lifetime_value_inr') for lifetime value aggregations. For fact_resort: use 'total_revenue_inr', 'ancillary_revenue_inr', 'restaurant_revenue_inr' for revenue analysis. Can combine with filters to analyze specific time periods, resorts, or conditions. Use this tool to compare revenue across months, resorts, or regions. For sales analysis: compare revenue between months, identify low-performing periods, analyze occupancy rates. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Perform analytical queries across the Supabase tables. This is the ONLY correct tool for counting records and aggregations. NEVER use get_members/get_resorts/get_feedback/get_events for counting. Use when user asks for 'count', 'total number', 'how many', 'number of', 'average', 'min', 'max', 'sum'. Supports counting filtered results if filters are provided. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'feedback_date' (NOT 'log_date') for fact_feedback. Format: filters: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. For aggregations, specify the field parameter (use 'field' or 'column' - both are accepted). For fact_member: use 'lifetime_value' (NOT 'lifetime_value_inr') for lifetime value aggregations. For fact_resort: use 'total_revenue' (NOT 'total_revenue_inr'), 'activity_revenue' (NOT 'ancillary_revenue_inr'), 'restaurant_revenue' for revenue analysis. Can combine with filters to analyze specific time periods, resorts, or conditions. Use this tool to compare revenue across months, resorts, or regions. For sales analysis: compare revenue between months, identify low-performing periods, analyze occupancy rates. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -520,7 +532,7 @@ const tools: Tool[] = [
   {
     name: "query_table",
     description:
-      "Generic query tool for any Supabase table with advanced filtering and querying capabilities. Use when user wants filtered results or to SHOW/DISPLAY records with conditions. CRITICAL: Table name MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event' (always use 'fact_' prefix, never use 'resorts', 'members', 'feedback', or 'events'). Supports advanced filtering with operators (eq, gt, gte, lt, lte, like, ilike). When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'log_date' (NOT 'feedback_date') for fact_feedback. CRITICAL FORMAT: 'filters' MUST be an OBJECT (not an array). Examples: Simple equality: {'membership_tier': 'Red'}. With operator: {'membership_tier': {'operator': 'eq', 'value': 'Red'}}. Date range: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. Multiple filters: {'membership_tier': 'Red', 'is_active': true}. For resort names, use 'ilike' operator for case-insensitive matching: {'resort_name': {'operator': 'ilike', 'value': 'Assanora'}}. DO NOT use array format like [{'column': '...', 'operator': '...', 'value': '...'}]. There is NO 'columns' parameter. For feedback questions like 'What was the feedback on [resort] in [month]?': Use query_table with table: 'fact_feedback', filters: {'resort_name_fk': {'operator': 'ilike', 'value': '[resort_name]'}, 'log_date': {'gte': '[start_date]', 'lte': '[end_date]'}}. For sales/revenue analysis: Query fact_resort data for specific time periods/resorts, then query fact_event table for the same time period to find potential reasons (weather, competitor promotions, economic factors, local events). For feedback analysis: Query fact_feedback by resort_name_fk (use 'ilike' for case-insensitive), log_date (NOT feedback_date), or nps_score. For customer analysis: Query fact_member by membership_tier, region, or date_joined. For cross-referencing: Query resorts affected by events in a specific region/time, resorts with poor feedback, resorts attracting specific customer tiers. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Generic query tool for any Supabase table with advanced filtering and querying capabilities. Use when user wants filtered results or to SHOW/DISPLAY records with conditions. CRITICAL LIMITATIONS: This tool does NOT support joins, group_by, metrics, or aggregations. For demographic analysis (gender, region, age_group breakdowns) or questions requiring joining multiple tables, use 'insights_feedback_demographics' instead. For counting or aggregating, use 'analyze_data' instead. CRITICAL: Table name MUST be one of: 'fact_member', 'fact_resort', 'fact_feedback', 'fact_event' (always use 'fact_' prefix, never use 'resorts', 'members', 'feedback', or 'events'). Supports advanced filtering with operators (eq, gt, gte, lt, lte, like, ilike). When user asks for 'all' records or a specific number (e.g., '50 resorts'), DO NOT set limit parameter - tool defaults to 10000 which should cover all unique resorts. If a specific date returns fewer resorts than expected, try querying without date filter and deduplicating by resort_name to get ALL unique resorts. CRITICAL FOR RESORTS: fact_resort is a time-series table with daily records. When user asks for 'resorts' (not daily data), you MUST ALWAYS add a date filter to get one record per resort: filters: {'activity_date': {'gte': '2025-10-01', 'lte': '2025-10-01'}} (use a specific date like latest available). If that date returns fewer resorts than expected (e.g., user says there are 1353 resorts but you only get 11), query WITHOUT date filter and deduplicate by resort_name in your response to get ALL unique resorts. NEVER return multiple daily records for the same resort when user asks for 'resorts' - always show unique resort names. When asked for 'resorts' WITHOUT specifications, use query_table with table: 'fact_resort' and a date filter (or without date filter if you need all unique resorts). When asked WITH specifications (theme, region, etc.), ALWAYS add a date filter to the filters object: {'resort_theme': {'operator': 'ilike', 'value': 'Beach'}, 'activity_date': {'gte': '2025-10-01', 'lte': '2025-10-01'}}. For date ranges, use column names: 'date_joined' (NOT 'joining_date') for fact_member, 'activity_date' for fact_resort, 'event_date' for fact_event, 'feedback_date' (NOT 'log_date') for fact_feedback. CRITICAL FORMAT: 'filters' MUST be an OBJECT (not an array). Examples: Simple equality: {'membership_tier': 'Red'}. With operator: {'membership_tier': {'operator': 'eq', 'value': 'Red'}}. Date range: {'date_joined': {'gte': '2018-01-01', 'lte': '2018-12-31'}}. Multiple filters: {'membership_tier': 'Red', 'is_active': true}. FOR RESORT FILTERING: When user asks for resorts WITH specifications (theme, region, location, etc.), use filters. Use 'resort_theme' to filter by theme (e.g., 'Beach', 'Hill Station', 'Waterpark') - use 'ilike' for partial matching: {'resort_theme': {'operator': 'ilike', 'value': 'Beach'}}. Use 'resort_region' to filter by region (e.g., 'West', 'South', 'North', 'East'): ALWAYS use 'ilike' for case-insensitive matching: {'resort_region': {'operator': 'ilike', 'value': 'East'}} or {'resort_region': {'operator': 'ilike', 'value': 'north'}} (works with any case variation). Use 'resort_location' to filter by location/state (e.g., 'Maharashtra', 'Goa'): ALWAYS use 'ilike' for case-insensitive matching: {'resort_location': {'operator': 'ilike', 'value': 'Maharashtra'}} or {'resort_location': {'operator': 'ilike', 'value': 'goa'}}. CRITICAL: 'resort_location' is for location/state (Maharashtra, Goa), 'resort_region' is for region (West, South, North, East). ALWAYS add date filter: {'resort_location': {'operator': 'ilike', 'value': 'Maharashtra'}, 'activity_date': {'gte': '2025-10-01', 'lte': '2025-10-01'}}. Use 'resort_name' with 'ilike' operator for case-insensitive matching: {'resort_name': {'operator': 'ilike', 'value': 'Assanora'}}. Combine multiple filters: {'resort_theme': {'operator': 'ilike', 'value': 'Beach'}, 'resort_region': {'operator': 'eq', 'value': 'West'}, 'activity_date': {'gte': '2025-09-01', 'lte': '2025-09-30'}}. DO NOT use array format like [{'column': '...', 'operator': '...', 'value': '...'}]. DO NOT use 'group_by', 'metrics', 'join', or 'columns' parameters - these are NOT supported. For demographic questions like 'Which gender members give us the most positive feedback?', use 'insights_feedback_demographics' instead. For feedback questions like 'What was the feedback on [resort] in [month]?': Use query_table with table: 'fact_feedback', filters: {'resort_name': {'operator': 'ilike', 'value': '[resort_name]'}, 'feedback_date': {'gte': '[start_date]', 'lte': '[end_date]'}}. For sales/revenue analysis: Query fact_resort data for specific time periods/resorts, then query fact_event table for the same time period to find potential reasons (weather, competitor promotions, economic factors, local events). For feedback analysis: Query fact_feedback by resort_name (use 'ilike' for case-insensitive, NOT 'resort_name_fk'), feedback_date (NOT 'log_date'), or nps_score. For customer analysis: Query fact_member by membership_tier, region, or date_joined. For cross-referencing: Query resorts affected by events in a specific region/time, resorts with poor feedback, resorts attracting specific customer tiers. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
     inputSchema: {
       type: "object",
       properties: {
@@ -563,7 +575,7 @@ const tools: Tool[] = [
   {
     name: "insights_events_impact",
     description:
-      "Find which resorts' sales were affected by external events within a date range. Input: start_date, end_date. Output: resorts with revenue/occupancy dips aligned to events, listing the events. Do not expose internal steps.",
+      "Find which resorts' sales were affected by external events within a date range. Use for questions like 'From all negative events in [month] which resorts could have been affected by these events'. Input: start_date, end_date. Output: resorts in regions with negative events, including both confirmed impacts (revenue drop >5%) and potentially affected resorts. Lists all negative events (weather, competitor promos, economic news) in each region. Returns both 'impacted' (confirmed revenue drop) and 'potentially_affected' (resorts in event regions). Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -586,7 +598,7 @@ const tools: Tool[] = [
   {
     name: "insights_surge_forecast",
     description:
-      "Heuristic forecast of upcoming booking surges using recent trends (revenue, occupancy), improving sentiment, and benign events. Input: month ('YYYY-MM') to forecast. Output: resorts expected to surge and key drivers. Do not expose internal steps.",
+      "Heuristic forecast of upcoming booking surges using recent trends (revenue, occupancy), improving sentiment, and benign events. Input: month ('YYYY-MM') to forecast. Output: JSON with 'forecast' array (resorts expected to surge with 'key_drivers' explaining why), and 'summary' with total count and top forecasted resort. Includes resorts with positive trends, stable performance with low negatives, good sentiment (more positive than negative feedback), or minimal decline. Only excludes resorts with major negative events AND strong declining trends. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: { month: { type: "string" } },
@@ -612,9 +624,18 @@ const tools: Tool[] = [
     }
   },
   {
+    name: "insights_blue_tier_feedback",
+    description:
+      "Find resorts with feedback from Blue tier customers. Use for questions like 'Which resorts have got most negative feedback from blue tier customers'. Optional date range. Output: resorts with feedback from Blue tier customers, including negative feedback count and themes. Do not expose internal steps.",
+    inputSchema: {
+      type: "object",
+      properties: { start_date: { type: "string" }, end_date: { type: "string" } }
+    }
+  },
+  {
     name: "insights_resort_feedback_analysis",
     description:
-      "Analyze feedback for a specific resort within a date range. Use for questions like 'What was the feedback on [resort] in [month]?' or 'Analyze feedback for [resort] in [date range]'. Provides comprehensive feedback analysis including sentiment breakdown, key themes, NPS/CSAT scores, and sample quotes. Input: resort_name (required), date_range with start and end (required, format: YYYY-MM-DD). Example: For 'What was the feedback on Assonora in September 2025': Use with resort_name: 'Assonora', date_range: {start: '2025-09-01', end: '2025-09-30'}. Output: JSON summary with feedback statistics, themes, and insights. Do not expose internal steps.",
+      "Analyze feedback for a specific resort within a date range. Use for questions like 'What was the feedback on [resort] in [month]?', 'What is the negative/positive feedback for [resort] in [month]?', 'What are the top 3 feedback themes for [resort]?'. Provides comprehensive feedback analysis including sentiment breakdown, key themes (top 3 positive and negative), NPS/CSAT scores, and sample quotes. Input: resort_name (required), date_range with start and end (required, format: YYYY-MM-DD). Example: For 'What was the feedback on Assonora in September 2025': Use with resort_name: 'Assonora', date_range: {start: '2025-09-01', end: '2025-09-30'}. Output: JSON summary with feedback statistics, top themes (positive_themes, negative_themes), and insights. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -698,7 +719,7 @@ const tools: Tool[] = [
   {
     name: "insights_weather_impact",
     description:
-      "Analyze how weather conditions affect resort performance. Correlates weather events with revenue and occupancy changes. Optional date range. Output: JSON with weather-impacted resorts, performance changes, and weather event details. Do not expose internal steps.",
+      "Analyze how weather conditions affect resort performance. Correlates weather events with revenue and occupancy changes. Input: start_date, end_date (YYYY-MM-DD format, required for meaningful results - use date range covering all available data like '2025-07-01' to '2025-10-31'). Output: JSON with weather-impacted resorts, performance changes, and weather event details. For questions like 'Which month saw the maximum weather events?', first query fact_event table with filters for weather events across the full date range, then group by month to count events per month. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -770,7 +791,7 @@ const tools: Tool[] = [
   {
     name: "insights_monthly_sales_comparison",
     description:
-      "Compare sales between two months to identify resorts with low sales. Input: month1 ('YYYY-MM'), month2 ('YYYY-MM'). Output: JSON with resorts showing lower sales in month2 compared to month1, with revenue deltas and percentage changes. Use for questions like 'Which resorts showed low sales in October than in September 2025'. Do not expose internal steps.",
+      "Compare sales between two months to identify resorts with revenue changes (both increases and decreases). Input: month1 ('YYYY-MM'), month2 ('YYYY-MM'). Output: JSON with resorts showing revenue changes in month2 compared to month1, with revenue deltas and percentage changes. Includes both 'resorts_with_low_sales' (decline) and 'resorts_with_increased_sales' (increase). Use for questions like 'Which resorts showed decline/increase in revenue from September to October 2025' or 'Which resorts show decline/increase in revenue between 2 months'. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -783,7 +804,7 @@ const tools: Tool[] = [
   {
     name: "insights_resort_revenue_reasons",
     description:
-      "Analyze reasons for lower revenue for a specific resort in a specific month. Combines resort performance data, events, and feedback to identify root causes. Input: resort_name, month ('YYYY-MM'). Output: JSON with revenue comparison vs previous month, identified reasons (events, feedback, occupancy), and key drivers. Use for questions like 'What were the reasons for lower revenue in Acacia Palms in October 2025'. Do not expose internal steps.",
+      "Analyze reasons for revenue changes (both increase and decrease) for a specific resort in a specific month. Combines resort performance data, events, and feedback to identify root causes. Input: resort_name, month ('YYYY-MM'). Output: JSON with revenue_comparison (showing previous_month, current_month, delta_inr, percentage_change), identified_reasons array (events, feedback, occupancy), events array, negative_feedback_count, negative_feedback_themes, and positive reasons if revenue increased. Shows both negative reasons (for decline) and positive reasons (for increase). IMPORTANT: Before using this tool for 'What negative feedback caused revenue decline' questions, first verify there was actually a decline using insights_monthly_sales_comparison. If there was no decline, state that clearly. Use for questions like 'What negative feedback or negative external events caused a revenue decline for Saj from September to October 2025' or 'What positive feedback or positive external events caused a revenue increase for Assonora from September to October 2025'. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -796,7 +817,7 @@ const tools: Tool[] = [
   {
     name: "insights_revenue_feedback_correlation",
     description:
-      "Identify resorts where lower revenue in a month correlates with negative feedback from previous months. Input: month ('YYYY-MM') of the revenue month to evaluate. Output: JSON with resorts showing revenue decline, associated negative feedback themes, and correlation strength. Use for questions like 'Which resorts saw a lower revenue in a month with a co-relation to negative feedback'. Do not expose internal steps.",
+      "Identify resorts where lower revenue in a month correlates with negative feedback from previous months. Input: month ('YYYY-MM') of the revenue month to evaluate. For general correlation questions like 'What is correlation between negative feedback and loss in revenue' or 'How much does each negative feedback cost us', analyze multiple months (e.g., July, August, September, October 2025) to identify patterns across the dataset. Output: JSON with resorts showing revenue decline (revenue_decline_inr), associated negative feedback themes, negative_feedback_count, and correlation strength. For cost calculations: Sum revenue_decline_inr across all months/resorts, sum negative_feedback_count, then divide to get cost per feedback. Use for questions like 'Which resorts saw a lower revenue in a month with a co-relation to negative feedback'. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -808,7 +829,7 @@ const tools: Tool[] = [
   {
     name: "insights_unpaid_asf_feedback",
     description:
-      "Find feedback from members who have not paid Annual Subscription Fee (ASF) for 2 years. Identifies members with unpaid ASF for 2+ years and retrieves their feedback. Output: JSON with member details, ASF payment status, and their feedback (if any). Use for questions like 'Is there any negative feedback from members who have not paid ASF for 2 years, what is it'. Do not expose internal steps.",
+      "Find feedback from members who have not paid Annual Subscription Fee (ASF) for 2 years. Identifies members with unpaid ASF for 2+ years and retrieves their feedback. Checks members with 'unpaid' or 'late' status in annual_fee_collection_status and verifies they haven't paid in 2+ years (based on last_holiday_date or date_joined). Output: JSON with member details, ASF payment status, total feedback count, negative feedback count, and their complaints/feedback (if any). Use for questions like 'Is there any negative feedback from members who have not paid ASF for 2 years, what is it' or 'Those members who have not paid ASF for 2 or more years what are their complaints'. Returns all feedback (not just negative) but highlights negative feedback separately. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -824,6 +845,34 @@ const tools: Tool[] = [
         resort_name: { type: "string", description: "Name of the resort (e.g., 'Saj')" }
       },
       required: ["resort_name"]
+    }
+  },
+  {
+    name: "insights_feedback_demographics",
+    description:
+      "Analyze feedback by demographic dimensions (gender, region, age_group) and sentiment. Performs multi-table analysis joining feedback with member data. Input: sentiment ('positive', 'negative', 'neutral', or omit for all), dimension ('gender', 'member_region', 'age_group', or omit for all). Optional: start_date, end_date (YYYY-MM-DD format). Output: JSON with breakdown by dimension showing count and percentage of feedback. Use for questions like 'Which gender members give us the most positive feedback?', 'Which region customers have given the most positive feedback?', 'Which age group members have given us the most negative feedback?'. Do not expose internal steps.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sentiment: {
+          type: "string",
+          enum: ["positive", "negative", "neutral"],
+          description: "Filter feedback by sentiment (optional)"
+        },
+        dimension: {
+          type: "string",
+          enum: ["gender", "member_region", "age_group"],
+          description: "Demographic dimension to analyze (optional, if omitted returns all dimensions)"
+        },
+        start_date: {
+          type: "string",
+          description: "Start date for feedback filter (YYYY-MM-DD format, optional)"
+        },
+        end_date: {
+          type: "string",
+          description: "End date for feedback filter (YYYY-MM-DD format, optional)"
+        }
+      }
     }
   }
 ];
@@ -1005,18 +1054,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       }
 
       case "query_table": {
-        const { table, table_name, filters, limit, order } = args as {
+        const { table, table_name, filters, limit, order, group_by, metrics, join, columns } = args as {
           table?: string;
           table_name?: string;
           filters?: Record<string, any>;
           limit?: number;
           order?: string;
+          group_by?: any;
+          metrics?: any;
+          join?: any;
+          columns?: any;
         };
 
         // Accept both 'table' and 'table_name' for backward compatibility
         const tableName = table || table_name;
         if (!tableName) {
           throw new Error("Table name is required (use 'table' or 'table_name' parameter)");
+        }
+
+        // Reject unsupported parameters and suggest correct tool
+        if (group_by || metrics || join) {
+          if (tableName === "fact_feedback" && (group_by || metrics)) {
+            throw new Error("query_table does NOT support 'group_by' or 'metrics' parameters. For demographic analysis questions (e.g., 'Which gender members give us the most positive feedback?'), use 'insights_feedback_demographics' tool instead. For counting or aggregating, use 'analyze_data' tool instead.");
+          }
+          throw new Error("query_table does NOT support 'group_by', 'metrics', or 'join' parameters. For demographic analysis, use 'insights_feedback_demographics'. For counting/aggregating, use 'analyze_data'.");
+        }
+
+        if (columns) {
+          throw new Error("query_table does NOT support 'columns' parameter. Use 'select' parameter in 'get_*' tools or query all columns by omitting this parameter.");
         }
 
         // Validate filters format - must be an object, not an array
@@ -1041,7 +1106,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             // If value is an object with operator, use it (e.g., {operator: 'gt', value: 100})
             if (typeof value === 'object' && value !== null && 'operator' in value) {
               const op = (value as any).operator || 'eq';
-              const val = (value as any).value;
+              let val = (value as any).value;
+              // Automatically add wildcards for ilike and like operators for partial matching
+              if ((op === 'ilike' || op === 'like') && typeof val === 'string') {
+                // Only add wildcards if they're not already present
+                if (!val.startsWith('%')) val = '%' + val;
+                if (!val.endsWith('%')) val = val + '%';
+              }
               queryParams[key] = `${op}.${val}`;
             } 
             // Handle date ranges: {gte: "2018-01-01", lte: "2018-12-31"}
@@ -1122,11 +1193,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const prev2Ym = previousMonth(prevYm);
         const prev2 = monthRange(prev2Ym);
         const feedback = await querySupabaseTable("fact_feedback", buildQuery({
-          log_date: { gte: prev2.start, lte: prev.end },
-          ...(resort_name ? { resort_name_fk: { operator: "ilike", value: resort_name } } : {})
+          feedback_date: { gte: prev2.start, lte: prev.end },
+          ...(resort_name ? { resort_name: { operator: "ilike", value: resort_name } } : {})
         }));
 
-        const feedbackByResort = groupBy(feedback, (f:any)=>f.resort_name_fk || "Unknown");
+        const feedbackByResort = groupBy(feedback, (f:any)=>f.resort_name || "Unknown");
         const eventsByRegion = groupBy(events, (e:any)=>e.impact_region || "Unknown");
 
         const result: any[] = [];
@@ -1138,7 +1209,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           const evts = eventsByRegion[regionKey] || [];
           const fbs = feedbackByResort[resort] || [];
           const negF = fbs.filter((x:any)=> (x.sentiment && String(x.sentiment).toLowerCase()==="negative") || safeNumber(x.nps_score) <= 6 || safeNumber(x.csat_score) <= 3);
-          const fbThemes = topKeywords(negF.map((x:any)=>x.details_text || ""), 6);
+          const fbThemes = topKeywords(negF.map((x:any)=>x.issue_details_text || x.details_text || ""), 6);
 
           result.push({
             resort_name: resort,
@@ -1169,7 +1240,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       case "insights_events_impact": {
         const { start_date, end_date } = args as { start_date: string; end_date: string };
         const events = await querySupabaseTable("fact_event", buildQuery({ event_date: { gte: start_date, lte: end_date } }));
-        const byRegion = groupBy(events, (e:any)=>e.impact_region || "Unknown");
+        
+        // Filter for negative events (weather, competitor promos, economic news, etc.)
+        // If no specific negative types found, include all events as potentially negative
+        const negativeEvents = (events || []).filter((e:any) => {
+          const eventType = (e.event_type || "").toLowerCase();
+          return eventType.includes("weather") || 
+                 eventType.includes("competitor") || 
+                 eventType.includes("economic") ||
+                 eventType.includes("negative") ||
+                 (e.relevance_score && safeNumber(e.relevance_score) > 5) ||
+                 // If no events match, include all events (they might all be negative)
+                 (events.length > 0 && events.every((ev:any) => {
+                   const et = (ev.event_type || "").toLowerCase();
+                   return !et.includes("weather") && !et.includes("competitor") && !et.includes("economic");
+                 }));
+        });
+        
+        // If filtered list is empty but events exist, use all events
+        const finalEvents = negativeEvents.length > 0 ? negativeEvents : (events || []);
+        
+        const byRegion = groupBy(finalEvents, (e:any)=>e.impact_region || "Unknown");
 
         const resorts = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: start_date, lte: end_date } }));
 
@@ -1184,11 +1275,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           const g = groupBy(rows, (r:any)=>r.resort_name || "Unknown");
           const out: Record<string, any> = {};
           for (const [k, arr] of Object.entries(g)) {
-            const sum = (f:string)=>arr.reduce((a:any,r:any)=>a+safeNumber(r[f]),0);
             out[k] = {
-              revenue: sum("total_revenue_inr"),
+              revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0),
               region: arr[0]?.resort_region ?? null,
-              occupancy_avg: arr.reduce((a:any,r:any)=>a+safeNumber(r.occupancy_rate_perc),0)/(arr.length||1)
+              occupancy_avg: arr.reduce((a:any,r:any)=>a+safeNumber(r.occupied_percentage || r.occupancy_rate_perc),0)/(arr.length||1)
             };
           }
           return out;
@@ -1198,28 +1288,57 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const B = rollByResort(resortsPrev);
 
         const impacted: any[] = [];
+        const potentiallyAffected: any[] = [];
+        
+        // Get all unique regions with events
+        const regionsWithEvents = Object.keys(byRegion);
+        
         for (const [resort, cur] of Object.entries(A)) {
           const prev = B[resort] || { revenue: 0, occupancy_avg: 0, region: null };
           const delta = safeNumber((cur as any).revenue) - safeNumber(prev.revenue);
           const region = (cur as any).region || "Unknown";
           const evts = byRegion[region] || [];
           const drop = prev.revenue ? delta/prev.revenue : 0;
-          if (drop < -0.10 && evts.length) {
-            impacted.push({
+          
+          // If resort is in a region with negative events, include it
+          if (evts.length > 0) {
+            const resortData = {
               resort_name: resort,
               region,
               revenue_prev_inr: prev.revenue,
               revenue_curr_inr: (cur as any).revenue,
-              change_pct: +((delta/prev.revenue)*100).toFixed(1),
+              change_pct: prev.revenue ? +((delta/prev.revenue)*100).toFixed(1) : 0,
+              occupancy_change: +((cur as any).occupancy_avg - prev.occupancy_avg).toFixed(1),
               events: evts.map((e:any)=>({
-                date:e.event_date, type:e.event_type, weather:e.weather_condition,
-                competitor:e.competitor_name, details:e.details_description, relevance_score:e.relevance_score
+                date:e.event_date, 
+                type:e.event_type, 
+                weather:e.weather_condition,
+                competitor:e.competitor_name, 
+                details:e.details_description || e.event_details_description, 
+                relevance_score:e.relevance_score || e.event_relevance_score
               }))
-            });
+            };
+            
+            // If revenue dropped significantly, mark as confirmed impact
+            if (drop < -0.05) {
+              impacted.push(resortData);
+            } else {
+              // Otherwise, mark as potentially affected
+              potentiallyAffected.push(resortData);
+            }
           }
         }
 
-        return { content: [{ type: "text", text: JSON.stringify({ impacted }, null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          impacted: impacted.sort((a,b)=>a.change_pct - b.change_pct),
+          potentially_affected: potentiallyAffected,
+          summary: {
+            total_events: finalEvents.length,
+            regions_with_events: regionsWithEvents,
+            confirmed_impact: impacted.length,
+            potentially_affected_count: potentiallyAffected.length
+          }
+        }, null, 2) }] };
       }
 
       case "insights_feedback_drag": {
@@ -1250,7 +1369,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const fb = await querySupabaseTable("fact_feedback", buildQuery({
           log_date: { gte: prev2.start, lte: prev.end }
         }));
-        const fbByResort = groupBy(fb, (x:any)=>x.resort_name_fk || "Unknown");
+        const fbByResort = groupBy(fb, (x:any)=>x.resort_name || "Unknown");
 
         const impacted: any[] = [];
         for (const [resort, cur] of Object.entries(A)) {
@@ -1266,7 +1385,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
               revenue_curr_inr: (cur as any).revenue,
               change_pct: +dropPct.toFixed(1),
               negative_feedback_count: neg.length,
-              themes: topKeywords(neg.map((x:any)=>x.details_text || ""), 6)
+              themes: topKeywords(neg.map((x:any)=>x.issue_details_text || x.details_text || ""), 6)
             });
           }
         }
@@ -1284,27 +1403,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const r2 = monthRange(prevYm);
         const forecastWindow = monthRange(month);
 
-        const res1 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r1.start, lte: r1.end } }));
-        const res2 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r2.start, lte: r2.end } }));
+        const res1 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r1.start, lte: r1.end } })) || [];
+        const res2 = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r2.start, lte: r2.end } })) || [];
+        
+        // If res2 is empty (future month like November doesn't exist), compare September (r1) to October (r1)
+        // Otherwise, compare October (r1) to November (r2)
+        let olderData = res1;
+        let recentData = res2;
+        
+        // If November doesn't exist, we need to go back one more month for comparison
+        if (res2.length === 0 && res1.length > 0) {
+          // Compare September (prev2Ym) to October (prevYm)
+          const prev3Ym = previousMonth(prev2Ym);
+          const r0 = monthRange(prev3Ym);
+          olderData = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: r0.start, lte: r0.end } })) || [];
+          recentData = res1; // October becomes the recent data
+        }
 
         const roll = (rows:any[]) => {
           const g = groupBy(rows, (r:any)=>r.resort_name || "Unknown");
           const out: Record<string, any> = {};
           for (const [k, arr] of Object.entries(g)) {
-            const sum = (f:string)=>arr.reduce((a:any,r:any)=>a+safeNumber(r[f]),0);
-            const avg = (f:string)=>arr.length ? sum(f)/arr.length : 0;
-            out[k] = { revenue: sum("total_revenue_inr"), occupancy_avg: avg("occupancy_rate_perc"), region: arr[0]?.resort_region ?? null };
+            out[k] = { 
+              revenue: arr.reduce((a:any,r:any)=>a+safeNumber(r.total_revenue || r.total_revenue_inr),0), 
+              occupancy_avg: arr.length ? arr.reduce((a:any,r:any)=>a+safeNumber(r.occupied_percentage || r.occupancy_rate_perc),0)/arr.length : 0, 
+              region: arr[0]?.resort_region ?? null 
+            };
           }
           return out;
         };
 
-        const A = roll(res1); // older
-        const B = roll(res2); // recent
+        const A = roll(olderData); // older
+        const B = roll(recentData); // recent (or same as older if future month)
         const events = await querySupabaseTable("fact_event", buildQuery({ event_date: { gte: forecastWindow.start, lte: forecastWindow.end } }));
-        const fb = await querySupabaseTable("fact_feedback", buildQuery({ log_date: { gte: r2.start, lte: forecastWindow.start } }));
+        const fb = await querySupabaseTable("fact_feedback", buildQuery({ feedback_date: { gte: r2.start, lte: forecastWindow.start } }));
 
         const evByRegion = groupBy(events, (e:any)=>e.impact_region || "Unknown");
-        const fbByResort = groupBy(fb, (x:any)=>x.resort_name_fk || "Unknown");
+        const fbByResort = groupBy(fb, (x:any)=>x.resort_name || "Unknown");
 
         const forecast: any[] = [];
         for (const [resort, newer] of Object.entries(B)) {
@@ -1314,13 +1449,47 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
           const region = (newer as any).region || "Unknown";
           const evts = evByRegion[region] || [];
-          const hasNegativeEvent = evts.some((e:any)=> String(e.event_type).match(/Major Weather|Economic News|Competitor Promo/i));
+          const hasNegativeEvent = evts.some((e:any)=> {
+            const et = String(e.event_type || "").toLowerCase();
+            return et.includes("weather") || et.includes("economic") || et.includes("competitor");
+          });
 
           const fbs = fbByResort[resort] || [];
           const negCount = fbs.filter((x:any)=> (x.sentiment && String(x.sentiment).toLowerCase()==="negative") || safeNumber(x.nps_score) <= 6 || safeNumber(x.csat_score) <= 3).length;
+          const posCount = fbs.filter((x:any)=> (x.sentiment && String(x.sentiment).toLowerCase()==="positive") || safeNumber(x.nps_score) >= 7 || safeNumber(x.csat_score) >= 4).length;
 
           // Heuristic: rising revenue OR occupancy + low negatives + no adverse forecast events
-          if ((trendRevPct > 0.08 || trendOcc > 2) && !hasNegativeEvent && negCount <= 2) {
+          // Also consider resorts with improving trends even if not perfect
+          // For December forecast, we're comparing Oct (older) vs Nov (recent), or Sep vs Oct if Nov doesn't exist
+          const hasPositiveTrend = trendRevPct > 0.01 || trendOcc > 0.3 || (trendRevPct > 0 && trendOcc > 0);
+          const hasLowNegatives = negCount <= 8; // More lenient - allow up to 8 negative feedback
+          // Don't exclude resorts just because there are events - events might not affect all resorts equally
+          // Only exclude if there are MAJOR negative events AND the resort has declining trends
+          const hasMajorNegativeEvents = hasNegativeEvent && (trendRevPct < -0.05 || trendOcc < -2);
+          const hasPositiveFeedback = posCount > negCount; // More positive than negative
+          
+          // Include resorts with:
+          // 1. Positive trend (revenue or occupancy growth)
+          // 2. Stable performance with low negatives
+          // 3. More positive feedback than negative (good sentiment)
+          // 4. Any resort with low negatives and no major declining trend
+          const isStableWithLowNegatives = trendRevPct >= -0.05 && trendOcc >= -1 && negCount <= 5;
+          const hasGoodSentiment = hasPositiveFeedback && negCount <= 5;
+          const hasMinimalDecline = trendRevPct >= -0.10 && trendOcc >= -2 && negCount <= 5; // Small decline is okay
+          
+          // Include if: positive trend OR stable with low negatives OR good sentiment OR minimal decline
+          // AND not excluded by major negative events with strong decline
+          if ((hasPositiveTrend || isStableWithLowNegatives || hasGoodSentiment || hasMinimalDecline) && hasLowNegatives && !hasMajorNegativeEvents) {
+            const drivers: string[] = [];
+            if (trendRevPct > 0.01) drivers.push(`Revenue growth of ${(trendRevPct*100).toFixed(1)}%`);
+            if (trendOcc > 0.3) drivers.push(`Occupancy increase of ${trendOcc.toFixed(1)}%`);
+            if (trendRevPct >= -0.05 && trendOcc >= -1 && trendRevPct < 0.01 && trendOcc < 0.3) drivers.push(`Stable performance with low negatives`);
+            if (hasPositiveFeedback) drivers.push(`More positive feedback (${posCount}) than negative (${negCount})`);
+            if (negCount <= 2) drivers.push(`Very low negative feedback (${negCount})`);
+            else if (negCount <= 5) drivers.push(`Low negative feedback (${negCount})`);
+            if (evts.length === 0) drivers.push(`No negative events forecasted`);
+            else if (!hasNegativeEvent) drivers.push(`No major negative events forecasted`);
+            
             forecast.push({
               resort_name: resort,
               region,
@@ -1329,13 +1498,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 trend_revenue_pct: +((trendRevPct)*100).toFixed(1),
                 trend_occupancy_delta: +trendOcc.toFixed(1),
                 recent_negative_feedback: negCount,
-                notable_events_in_forecast_window: evts.length
+                notable_events_in_forecast_window: evts.length,
+                key_drivers: drivers
               }
             });
           }
         }
 
-        return { content: [{ type: "text", text: JSON.stringify({ forecast }, null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          month,
+          forecast: forecast.sort((a,b)=>b.drivers.trend_revenue_pct - a.drivers.trend_revenue_pct),
+          summary: {
+            total_resorts_forecasted: forecast.length,
+            top_forecasted: forecast.length > 0 ? forecast[0] : null
+          }
+        }, null, 2) }] };
       }
 
       case "insights_red_tier_attraction": {
@@ -1348,12 +1525,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
         // Try to bind by recent feedback/reference to a resort
         const fb = await querySupabaseTable("fact_feedback", buildQuery({
-          ...(start_date || end_date ? { log_date: { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) } } : {}),
+          ...(start_date || end_date ? { feedback_date: { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) } } : {}),
           // Only Red tier members if your feedback table contains member_id_fk
         }));
 
         // Aggregate by resort_name_fk from feedback as proxy for engagement
-        const byResort = groupBy(fb.filter((x:any)=> x.membership_tier === "Red" || members.some((m:any)=> m.member_id === x.member_id_fk && m.membership_tier === "Red")), (x:any)=>x.resort_name_fk || "Unknown");
+        const byResort = groupBy(fb.filter((x:any)=> x.membership_tier === "Red" || members.some((m:any)=> m.member_id === x.member_id_fk && m.membership_tier === "Red")), (x:any)=>x.resort_name || "Unknown");
         const ranking = Object.entries(byResort)
           .map(([resort, arr])=>({ resort_name: resort, red_tier_interactions: arr.length }))
           .sort((a,b)=>b.red_tier_interactions - a.red_tier_interactions);
@@ -1364,7 +1541,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       case "insights_red_tier_poor_feedback": {
         const { start_date, end_date } = args as { start_date?: string; end_date?: string };
         const fbFilters: Record<string, any> = {};
-        if (start_date || end_date) fbFilters.log_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
+        if (start_date || end_date) fbFilters.feedback_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
         const fb = await querySupabaseTable("fact_feedback", buildQuery(fbFilters));
 
         // Filter to Red tier (assuming feedback carries membership_tier OR join to members if needed)
@@ -1373,15 +1550,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           const member = members.find((m:any)=> m.member_id === x.member_id_fk);
           return member && member.membership_tier === "Red";
         });
-        const byResort = groupBy(redFb, (x:any)=>x.resort_name_fk || "Unknown");
+        const byResort = groupBy(redFb, (x:any)=>x.resort_name || "Unknown");
 
         const out = Object.entries(byResort).map(([resort, arr]) => {
           const neg = arr.filter((x:any)=> (x.sentiment && String(x.sentiment).toLowerCase()==="negative") || safeNumber(x.nps_score) <= 6 || safeNumber(x.csat_score) <= 3);
           return {
             resort_name: resort,
             negative_count: neg.length,
-            sample_quotes: neg.slice(0,5).map((x:any)=> x.details_text).filter(Boolean),
-            themes: topKeywords(neg.map((x:any)=>x.details_text || ""), 8)
+            sample_quotes: neg.slice(0,5).map((x:any)=> x.issue_details_text || x.details_text).filter(Boolean),
+            themes: topKeywords(neg.map((x:any)=>x.issue_details_text || x.details_text || ""), 8)
+          };
+        }).sort((a,b)=>b.negative_count - a.negative_count);
+
+        return { content: [{ type: "text", text: JSON.stringify({ resorts: out }, null, 2) }] };
+      }
+
+      case "insights_blue_tier_feedback": {
+        const { start_date, end_date } = args as { start_date?: string; end_date?: string };
+        const fbFilters: Record<string, any> = {};
+        if (start_date || end_date) fbFilters.feedback_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
+        const fb = await querySupabaseTable("fact_feedback", buildQuery(fbFilters));
+
+        const members = await querySupabaseTable("fact_member", buildQuery({ membership_tier: { operator: "eq", value: "Blue" } }));
+        const blueFb = fb.filter((x:any)=> {
+          const member = members.find((m:any)=> m.member_id === x.member_id_fk);
+          return member && member.membership_tier === "Blue";
+        });
+        const byResort = groupBy(blueFb, (x:any)=>x.resort_name || "Unknown");
+
+        const out = Object.entries(byResort).map(([resort, arr]) => {
+          const neg = arr.filter((x:any)=> (x.sentiment && String(x.sentiment).toLowerCase()==="negative") || safeNumber(x.nps_score) <= 6 || safeNumber(x.csat_score) <= 3);
+          return {
+            resort_name: resort,
+            total_feedback: arr.length,
+            negative_count: neg.length,
+            negative_percentage: arr.length ? +((neg.length/arr.length)*100).toFixed(1) : 0,
+            sample_quotes: neg.slice(0,5).map((x:any)=> x.issue_details_text || x.details_text).filter(Boolean),
+            themes: topKeywords(neg.map((x:any)=>x.issue_details_text || x.details_text || ""), 8)
           };
         }).sort((a,b)=>b.negative_count - a.negative_count);
 
@@ -1393,8 +1598,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const { start, end } = date_range;
 
         const feedback = await querySupabaseTable("fact_feedback", buildQuery({
-          resort_name_fk: { operator: "ilike", value: resort_name },
-          log_date: { gte: start, lte: end }
+          resort_name: { operator: "ilike", value: resort_name },
+          feedback_date: { gte: start, lte: end }
         }));
 
         if (!Array.isArray(feedback) || feedback.length === 0) {
@@ -1422,9 +1627,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const avgNPS = npsScores.length ? npsScores.reduce((a,b)=>a+b,0)/npsScores.length : 0;
         const avgCSAT = csatScores.length ? csatScores.reduce((a,b)=>a+b,0)/csatScores.length : 0;
 
-        const themes = topKeywords(feedback.map((x:any)=>x.details_text || ""), 10);
-        const positiveThemes = topKeywords(positive.map((x:any)=>x.details_text || ""), 5);
-        const negativeThemes = topKeywords(negative.map((x:any)=>x.details_text || ""), 5);
+        const themes = topKeywords(feedback.map((x:any)=>x.issue_details_text || x.details_text || ""), 10);
+        const positiveThemes = topKeywords(positive.map((x:any)=>x.issue_details_text || x.details_text || ""), 5);
+        const negativeThemes = topKeywords(negative.map((x:any)=>x.issue_details_text || x.details_text || ""), 5);
 
         const byPlatform = groupBy(feedback, (x:any)=>x.platform || "Unknown");
         const byIssueType = groupBy(feedback, (x:any)=>x.issue_type_category || "Unknown");
@@ -1461,19 +1666,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           },
           sample_quotes: {
             positive: positive.slice(0, 3).map((x:any)=>({
-              quote: x.details_text,
+              quote: x.issue_details_text || x.details_text,
               nps_score: x.nps_score,
               csat_score: x.csat_score,
               platform: x.platform,
-              date: x.log_date
+              date: x.feedback_date
             })),
             negative: negative.slice(0, 5).map((x:any)=>({
-              quote: x.details_text,
+              quote: x.issue_details_text || x.details_text,
               nps_score: x.nps_score,
               csat_score: x.csat_score,
               platform: x.platform,
               issue_type: x.issue_type_category,
-              date: x.log_date
+              date: x.feedback_date
             }))
           }
         };
@@ -1703,10 +1908,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
       case "insights_weather_impact": {
         const { start_date, end_date } = args as { start_date?: string; end_date?: string };
-        const eventFilters: Record<string, any> = { event_type: { operator: "eq", value: "Major Weather" } };
+        const eventFilters: Record<string, any> = {};
         if (start_date || end_date) eventFilters.event_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
 
-        const events = await querySupabaseTable("fact_event", buildQuery(eventFilters));
+        // First try to get all events in the date range, then filter for weather
+        let events = await querySupabaseTable("fact_event", buildQuery(eventFilters)) || [];
+        
+        // Filter for weather events: check event_type contains "weather" OR weather_condition field has value
+        events = events.filter((e:any) => {
+          const eventType = (e.event_type || "").toLowerCase();
+          return eventType.includes("weather") || (e.weather_condition && String(e.weather_condition).trim() !== "");
+        });
+        
         if (!Array.isArray(events) || events.length === 0) {
           return { content: [{ type: "text", text: JSON.stringify({ message: "No weather events found", impacted: [] }, null, 2) }] };
         }
@@ -1777,7 +1990,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       case "insights_platform_issue_analysis": {
         const { start_date, end_date } = args as { start_date?: string; end_date?: string };
         const fbFilters: Record<string, any> = {};
-        if (start_date || end_date) fbFilters.log_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
+        if (start_date || end_date) fbFilters.feedback_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
 
         const feedback = await querySupabaseTable("fact_feedback", buildQuery(fbFilters));
         if (!Array.isArray(feedback) || feedback.length === 0) {
@@ -1806,8 +2019,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       case "insights_issue_type_trends": {
         const { resort_name, start_date, end_date } = args as { resort_name?: string; start_date?: string; end_date?: string };
         const fbFilters: Record<string, any> = {};
-        if (resort_name) fbFilters.resort_name_fk = { operator: "ilike", value: resort_name };
-        if (start_date || end_date) fbFilters.log_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
+        if (resort_name) fbFilters.resort_name = { operator: "ilike", value: resort_name };
+        if (start_date || end_date) fbFilters.feedback_date = { ...(start_date ? { gte: start_date } : {}), ...(end_date ? { lte: end_date } : {}) };
 
         const feedback = await querySupabaseTable("fact_feedback", buildQuery(fbFilters));
         if (!Array.isArray(feedback) || feedback.length === 0) {
@@ -1815,7 +2028,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         }
 
         const byIssueType = groupBy(feedback, (f:any)=>f.issue_type_category || "Unknown");
-        const byResort = groupBy(feedback, (f:any)=>f.resort_name_fk || "Unknown");
+        const byResort = groupBy(feedback, (f:any)=>f.resort_name || "Unknown");
 
         const issueAnalysis = Object.entries(byIssueType).map(([issue, arr])=>({
           issue_type: issue,
@@ -1971,14 +2184,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const endDate = `${y}-12-31`;
 
         const resorts = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: startDate, lte: endDate } }));
-        const feedback = await querySupabaseTable("fact_feedback", buildQuery({ log_date: { gte: startDate, lte: endDate } }));
+        const feedback = await querySupabaseTable("fact_feedback", buildQuery({ feedback_date: { gte: startDate, lte: endDate } }));
 
         if (!Array.isArray(resorts) || resorts.length === 0) {
           return { content: [{ type: "text", text: JSON.stringify({ message: "No data found for year", year: y }, null, 2) }] };
         }
 
         const byMonth = groupBy(resorts, (r:any)=>r.activity_date ? r.activity_date.substring(0,7) : "Unknown");
-        const fbByMonth = groupBy(feedback, (f:any)=>f.log_date ? f.log_date.substring(0,7) : "Unknown");
+        const fbByMonth = groupBy(feedback, (f:any)=>f.feedback_date ? f.feedback_date.substring(0,7) : "Unknown");
 
         const monthlyTrends = Object.entries(byMonth).map(([month, arr])=>({
           month,
@@ -2041,31 +2254,39 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const B = rollByResort(resorts2);
 
         const lowSales: any[] = [];
+        const increasedSales: any[] = [];
         for (const [resort, m2] of Object.entries(B)) {
           const m1 = A[resort] || { total_revenue: 0 };
           const delta = safeNumber((m2 as any).total_revenue) - safeNumber(m1.total_revenue);
           const pctChange = m1.total_revenue ? (delta / m1.total_revenue) * 100 : 0;
+          const resortData = {
+            resort_name: resort,
+            month1_revenue_inr: m1.total_revenue,
+            month2_revenue_inr: (m2 as any).total_revenue,
+            revenue_delta_inr: delta,
+            percentage_change: +pctChange.toFixed(1),
+            region: (m2 as any).region
+          };
           if (delta < 0) {
-            lowSales.push({
-              resort_name: resort,
-              month1_revenue_inr: m1.total_revenue,
-              month2_revenue_inr: (m2 as any).total_revenue,
-              revenue_delta_inr: delta,
-              percentage_change: +pctChange.toFixed(1),
-              region: (m2 as any).region
-            });
+            lowSales.push(resortData);
+          } else if (delta > 0) {
+            increasedSales.push(resortData);
           }
         }
 
         lowSales.sort((a,b)=>a.revenue_delta_inr - b.revenue_delta_inr);
+        increasedSales.sort((a,b)=>b.revenue_delta_inr - a.revenue_delta_inr);
 
         return { content: [{ type: "text", text: JSON.stringify({ 
           month1,
           month2,
           resorts_with_low_sales: lowSales,
+          resorts_with_increased_sales: increasedSales,
           summary: {
             total_resorts_with_decline: lowSales.length,
-            largest_decline: lowSales[0] || null
+            total_resorts_with_increase: increasedSales.length,
+            largest_decline: lowSales.length ? lowSales[0] : null,
+            largest_increase: increasedSales.length ? increasedSales[0] : null
           }
         }, null, 2) }] };
       }
@@ -2130,21 +2351,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
 
         try {
           const feedbackFilters: Record<string, any> = { 
-            log_date: { gte: prev.start, lte: curr.end },
-            resort_name_fk: { operator: "ilike", value: resort_name }
+            feedback_date: { gte: prev.start, lte: curr.end },
+            resort_name: { operator: "ilike", value: resort_name }
           };
           feedback = await querySupabaseTable("fact_feedback", buildQuery(feedbackFilters)) || [];
         } catch (error) {
           console.error("Error fetching feedback:", error);
         }
         const negativeFeedback = (feedback || []).filter((f:any)=>safeNumber(f.nps_score) < 7 || (f.sentiment && f.sentiment.toLowerCase().includes('negative')));
+        const positiveFeedback = (feedback || []).filter((f:any)=>safeNumber(f.nps_score) >= 7 || (f.sentiment && f.sentiment.toLowerCase().includes('positive')));
 
         const reasons: string[] = [];
+        const positiveReasons: string[] = [];
         const eventDetails: any[] = [];
+        const positiveEventDetails: any[] = [];
+        
         if (events && events.length) {
           const weatherEvents = events.filter((e:any)=>e.event_type === "Major Weather");
           const competitorEvents = events.filter((e:any)=>e.event_type === "Competitor Promo");
           const localEvents = events.filter((e:any)=>e.event_type === "Local Event");
+          const positiveEvents = events.filter((e:any)=>e.event_type === "Local Event" || (e.relevance_score && safeNumber(e.relevance_score) < 3));
+          
           if (weatherEvents.length) {
             reasons.push("Weather events");
             eventDetails.push(...weatherEvents.map((e:any)=>({ type: "Weather", date: e.event_date, details: e.details_description })));
@@ -2153,16 +2380,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             reasons.push("Competitor promotions");
             eventDetails.push(...competitorEvents.map((e:any)=>({ type: "Competitor", date: e.event_date, competitor: e.competitor_name, details: e.details_description })));
           }
-          if (localEvents.length) {
+          if (localEvents.length && revenueDelta < 0) {
             reasons.push("Local events");
             eventDetails.push(...localEvents.map((e:any)=>({ type: "Local Event", date: e.event_date, details: e.details_description })));
           }
+          if (positiveEvents.length && revenueDelta > 0) {
+            positiveReasons.push("Positive local events");
+            positiveEventDetails.push(...positiveEvents.map((e:any)=>({ type: "Local Event", date: e.event_date, details: e.details_description })));
+          }
         }
-        if (negativeFeedback.length) {
+        if (negativeFeedback.length && revenueDelta < 0) {
           reasons.push("Negative feedback from previous period");
+        }
+        if (positiveFeedback.length && revenueDelta > 0) {
+          positiveReasons.push("Positive feedback from previous period");
         }
         if (currData.occupancy_avg < prevData.occupancy_avg - 5) {
           reasons.push("Lower occupancy rate");
+        }
+        if (currData.occupancy_avg > prevData.occupancy_avg + 5) {
+          positiveReasons.push("Higher occupancy rate");
         }
 
         return { content: [{ type: "text", text: JSON.stringify({ 
@@ -2179,10 +2416,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             current_month: currData.occupancy_avg,
             delta: +(currData.occupancy_avg - prevData.occupancy_avg).toFixed(1)
           },
-          identified_reasons: reasons,
+          identified_reasons: revenueDelta < 0 ? reasons : positiveReasons,
+          negative_reasons: reasons,
+          positive_reasons: positiveReasons,
           events: eventDetails,
+          positive_events: positiveEventDetails,
           negative_feedback_count: negativeFeedback.length,
-          negative_feedback_themes: negativeFeedback.length > 0 ? topKeywords(negativeFeedback.map((f:any)=>f.details_text || "").filter(Boolean), 5) : []
+          positive_feedback_count: positiveFeedback.length,
+          negative_feedback_themes: negativeFeedback.length > 0 ? topKeywords(negativeFeedback.map((f:any)=>f.issue_details_text || f.details_text || "").filter(Boolean), 5) : [],
+          positive_feedback_themes: positiveFeedback.length > 0 ? topKeywords(positiveFeedback.map((f:any)=>f.issue_details_text || f.details_text || "").filter(Boolean), 5) : []
         }, null, 2) }] };
       }
 
@@ -2202,7 +2444,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         try {
           resortsCurr = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: curr.start, lte: curr.end } })) || [];
           resortsPrev = await querySupabaseTable("fact_resort", buildQuery({ activity_date: { gte: prev.start, lte: prev.end } })) || [];
-          feedback = await querySupabaseTable("fact_feedback", buildQuery({ log_date: { gte: prev.start, lte: prev.end } })) || [];
+          feedback = await querySupabaseTable("fact_feedback", buildQuery({ feedback_date: { gte: prev.start, lte: prev.end } })) || [];
         } catch (error) {
           // If queries fail, return empty results rather than error
           console.error("Error in insights_revenue_feedback_correlation:", error);
@@ -2223,7 +2465,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const A = rollByResort(resortsPrev);
         const B = rollByResort(resortsCurr);
 
-        const fbByResort = groupBy(feedback || [], (f:any)=>f.resort_name_fk || "Unknown");
+        const fbByResort = groupBy(feedback || [], (f:any)=>f.resort_name || "Unknown");
         const negativeFbByResort: Record<string, any[]> = {};
         for (const [resort, fbs] of Object.entries(fbByResort)) {
           const neg = (fbs as any[]).filter((f:any)=>safeNumber(f.nps_score) < 7 || (f.sentiment && f.sentiment.toLowerCase().includes('negative')));
@@ -2236,14 +2478,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           const delta = safeNumber((m2 as any).total_revenue) - safeNumber(m1.total_revenue);
           const pctChange = m1.total_revenue ? (delta / m1.total_revenue) * 100 : 0;
           const negFb = negativeFbByResort[resort] || [];
-          if (delta < 0 && negFb.length) {
+          // Include resorts with revenue decline and negative feedback, or significant revenue decline (>5%) even with minimal feedback
+          if (delta < 0 && (negFb.length > 0 || pctChange < -5)) {
             correlated.push({
               resort_name: resort,
               revenue_decline_inr: delta,
               revenue_decline_pct: +pctChange.toFixed(1),
               negative_feedback_count: negFb.length,
-              feedback_themes: topKeywords(negFb.map((f:any)=>f.details_text || "").filter(Boolean), 5),
-              correlation_strength: negFb.length > 5 ? "Strong" : negFb.length > 2 ? "Moderate" : "Weak"
+              feedback_themes: negFb.length > 0 ? topKeywords(negFb.map((f:any)=>f.issue_details_text || f.details_text || "").filter(Boolean), 5) : [],
+              correlation_strength: negFb.length > 5 ? "Strong" : negFb.length > 2 ? "Moderate" : negFb.length > 0 ? "Weak" : "Potential (significant revenue decline, no feedback recorded)"
             });
           }
         }
@@ -2265,21 +2508,69 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
         const cutoffDate = twoYearsAgo.toISOString().slice(0, 10);
 
-        const members = await querySupabaseTable("fact_member", buildQuery({}));
+        const members = await querySupabaseTable("fact_member", buildQuery({})) || [];
+        
+        // First, let's try multiple approaches to identify unpaid members
         const unpaidMembers = (members || []).filter((m:any) => {
-          const asfStatus = m.annual_fee_collection_status;
-          const lastPaid = m.last_holiday_date || m.date_joined;
-          if (asfStatus && (asfStatus.toLowerCase() === "unpaid" || asfStatus.toLowerCase() === "late")) {
-            if (!lastPaid || lastPaid < cutoffDate) {
+          const asfStatus = (m.annual_fee_collection_status || "").toLowerCase().trim();
+          const lastPaid = m.last_holiday_date;
+          const dateJoined = m.date_joined;
+          
+          // Approach 1: Check if status explicitly indicates unpaid/late
+          const hasUnpaidStatus = asfStatus === "unpaid" || asfStatus === "late" || 
+                                  asfStatus.includes("unpaid") || asfStatus.includes("late") ||
+                                  asfStatus === "pending" || asfStatus.includes("pending");
+          
+          // Approach 2: Check if member joined more than 2 years ago
+          const joinedMoreThan2YearsAgo = dateJoined && dateJoined < cutoffDate;
+          
+          // Approach 3: Check if last paid date is more than 2 years ago (or doesn't exist)
+          const lastPaidMoreThan2YearsAgo = !lastPaid || (lastPaid && lastPaid < cutoffDate);
+          
+          // Include members if:
+          // 1. Has unpaid/late status AND (joined >2 years ago OR last paid >2 years ago OR never paid)
+          if (hasUnpaidStatus) {
+            if (joinedMoreThan2YearsAgo || lastPaidMoreThan2YearsAgo || !lastPaid) {
               return true;
             }
           }
+          
+          // 2. Joined >2 years ago AND (no last_holiday_date OR last_holiday_date >2 years ago) AND has unpaid status
+          if (joinedMoreThan2YearsAgo && (!lastPaid || lastPaid < cutoffDate) && hasUnpaidStatus) {
+            return true;
+          }
+          
+          // 3. More lenient: If joined >2 years ago and status is not "paid" or "active", include them
+          if (joinedMoreThan2YearsAgo && asfStatus && 
+              asfStatus !== "paid" && asfStatus !== "active" && asfStatus !== "current" &&
+              (!lastPaid || lastPaid < cutoffDate)) {
+            return true;
+          }
+          
           return false;
         });
 
         if (unpaidMembers.length === 0) {
+          // Provide diagnostic information to help understand why no members were found
+          const sampleStatuses = [...new Set((members || []).slice(0, 50).map((m:any) => m.annual_fee_collection_status).filter(Boolean))];
+          const membersWithUnpaidStatus = (members || []).filter((m:any) => {
+            const status = (m.annual_fee_collection_status || "").toLowerCase();
+            return status.includes("unpaid") || status.includes("late") || status.includes("pending");
+          }).length;
+          const membersJoinedMoreThan2Years = (members || []).filter((m:any) => 
+            m.date_joined && m.date_joined < cutoffDate
+          ).length;
+          
           return { content: [{ type: "text", text: JSON.stringify({ 
             message: "No members found with unpaid ASF for 2+ years",
+            diagnostic_info: {
+              total_members_checked: members.length,
+              members_with_unpaid_status: membersWithUnpaidStatus,
+              members_joined_more_than_2_years_ago: membersJoinedMoreThan2Years,
+              cutoff_date: cutoffDate,
+              sample_statuses_found: sampleStatuses.slice(0, 10),
+              note: "If you expected results, check if annual_fee_collection_status values match 'unpaid', 'late', or 'pending', and if members have date_joined or last_holiday_date before the cutoff date"
+            },
             members: []
           }, null, 2) }] };
         }
@@ -2304,11 +2595,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             total_feedback_count: memberFb.length,
             negative_feedback_count: negativeFb.length,
             negative_feedback: negativeFb.length > 0 ? negativeFb.map((f:any)=>({
-              date: f.log_date,
-              resort: f.resort_name_fk,
+              date: f.feedback_date,
+              resort: f.resort_name,
               nps_score: f.nps_score,
+              csat_score: f.csat_score,
               sentiment: f.sentiment,
-              details: f.details_text
+              details: f.issue_details_text || f.details_text || f.feedback_text || ""
+            })) : [],
+            all_feedback: memberFb.length > 0 ? memberFb.map((f:any)=>({
+              date: f.feedback_date,
+              resort: f.resort_name,
+              nps_score: f.nps_score,
+              csat_score: f.csat_score,
+              sentiment: f.sentiment,
+              details: f.issue_details_text || f.details_text || f.feedback_text || ""
             })) : []
           };
         });
@@ -2317,6 +2617,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           total_unpaid_members: result.length,
           members_with_feedback: result.filter((m:any)=>m.total_feedback_count > 0).length,
           members_with_negative_feedback: result.filter((m:any)=>m.negative_feedback_count > 0).length,
+          members_with_complaints: result.filter((m:any)=>m.negative_feedback_count > 0).length,
+          cutoff_date: cutoffDate,
           members: result
         }, null, 2) }] };
       }
@@ -2410,6 +2712,94 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             total_events: revenueDeclines.reduce((a:any,r:any)=>a+r.events.length, 0)
           }
         }, null, 2) }] };
+      }
+
+      case "insights_feedback_demographics": {
+        const { sentiment, dimension, start_date, end_date } = args as { 
+          sentiment?: string; 
+          dimension?: string; 
+          start_date?: string; 
+          end_date?: string;
+        };
+
+        try {
+          // Build feedback filters
+          const feedbackFilters: Record<string, any> = {};
+          if (sentiment) {
+            feedbackFilters.sentiment = { operator: "ilike", value: sentiment };
+          }
+          if (start_date || end_date) {
+            feedbackFilters.feedback_date = {};
+            if (start_date) feedbackFilters.feedback_date.gte = start_date;
+            if (end_date) feedbackFilters.feedback_date.lte = end_date;
+          }
+
+          // Fetch feedback
+          const feedback = await querySupabaseTable("fact_feedback", buildQuery(feedbackFilters)) || [];
+          
+          if (feedback.length === 0) {
+            return { content: [{ type: "text", text: JSON.stringify({ 
+              message: "No feedback found matching criteria",
+              breakdown: {}
+            }, null, 2) }] };
+          }
+
+          // Get member IDs from feedback
+          const memberIds = [...new Set(feedback.map((f:any) => f.member_id_fk).filter(Boolean))];
+          
+          // Fetch members
+          const members = await querySupabaseTable("fact_member", buildQuery({
+            member_id: { operator: "in", value: memberIds }
+          })) || [];
+
+          // Create member lookup map
+          const memberMap = new Map(members.map((m:any) => [m.member_id, m]));
+
+          // Join feedback with member data
+          const feedbackWithDemographics = feedback.map((f:any) => {
+            const member: any = memberMap.get(f.member_id_fk);
+            return {
+              ...f,
+              gender: member?.gender || "Unknown",
+              member_region: member?.member_region || member?.home_region || "Unknown",
+              age_group: member?.age_group || "Unknown"
+            };
+          });
+
+          // Determine which dimensions to analyze
+          const dimensionsToAnalyze = dimension ? [dimension] : ["gender", "member_region", "age_group"];
+
+          const breakdown: Record<string, any> = {};
+          const totalFeedback = feedbackWithDemographics.length;
+
+          for (const dim of dimensionsToAnalyze) {
+            const grouped = groupBy(feedbackWithDemographics, (f:any) => {
+              if (dim === "gender") return f.gender || "Unknown";
+              if (dim === "member_region") return f.member_region || "Unknown";
+              if (dim === "age_group") return f.age_group || "Unknown";
+              return "Unknown";
+            });
+
+            const dimBreakdown = Object.entries(grouped).map(([key, arr]) => ({
+              [dim]: key,
+              count: arr.length,
+              percentage: totalFeedback > 0 ? ((arr.length / totalFeedback) * 100).toFixed(2) : "0.00"
+            })).sort((a, b) => b.count - a.count);
+
+            breakdown[dim] = dimBreakdown;
+          }
+
+          return { content: [{ type: "text", text: JSON.stringify({ 
+            sentiment: sentiment || "all",
+            total_feedback: totalFeedback,
+            breakdown
+          }, null, 2) }] };
+        } catch (error: any) {
+          return { content: [{ type: "text", text: JSON.stringify({ 
+            error: "Failed to analyze feedback demographics",
+            message: error.message || "Unknown error"
+          }, null, 2) }] };
+        }
       }
 
       default:
