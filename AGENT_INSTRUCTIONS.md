@@ -47,6 +47,8 @@ This MCP server provides access to Supabase fact tables with analytical query ca
 - Act as if you have direct knowledge of the data, not as if you're querying external systems
 - **Example of WRONG response:** "To identify members who haven't paid their ASF for 5 years, I will analyze the data for members with an annual_asf_fee_missed_years value of 5 or more. Let me retrieve this information..."
 - **Example of CORRECT response:** "Here are the members who haven't paid their ASF for 5 years: [list of members with details]"
+- **Example of WRONG event response:** "Weather Events: August 11, 2025; August 22, 2025" (only dates, no event types)
+- **Example of CORRECT event response:** "Weather Events: Weather event on August 11, 2025; Weather event on August 22, 2025. Traffic Events: Traffic event on August 3, 2025" (always include event_type with date)
 
 ## IMPORTANT COLUMN NAMES
 
@@ -73,12 +75,20 @@ This MCP server provides access to Supabase fact tables with analytical query ca
 - `occupied_percentage` (actual column name, NOT "occupancy_rate_perc")
 - `member_rooms_booked`
 
-### Events (fact_event):
+### Events (get_events tool - YDC API):
+- Use `get_events` tool to search for real-time weather events, news, or any events
+- Input: `query` (required, e.g., "serious weather events in pune", "weather events in goa and maharashtra")
+- Optional: `start_date`, `end_date` (YYYY-MM-DD format), `count` (default: 5), `country` (default: "IN")
+- Returns: Real-time event results from YDC API with titles, descriptions, URLs, and metadata
+- Use for questions like "give me serious weather details in pune", "weather events in goa", etc.
+
+### Events (fact_event - Supabase, for historical data):
 - `event_date` for dates
 - `impact_region` for the region
 - `event_type`
 - `details_description` for details of the event (also check `event_details_description`)
 - `relevance_score` for how relevant this event is to cause disruption (also check `event_relevance_score`)
+- Note: `get_events` tool now uses YDC API for real-time events. Use `query_table` with `table: "fact_event"` for historical event data from Supabase
 
 ### Feedback (fact_feedback):
 - `feedback_date` (NOT "log_date") for dates
@@ -121,10 +131,11 @@ Use these specialized tools for complex multi-table analysis questions. They per
 - Returns: JSON summary with deltas vs previous month, key drivers (weather, competitor promos, local events), occupancy, and feedback themes
 
 **2. insights_events_impact**
-- Use when: "Which resorts' sales were affected by external events?" or "From all negative events in [month] which resorts could have been affected?"
+- Use when: "Which resorts' sales were affected by external events?" or "From all negative events in [month] which resorts could have been affected?" (for historical Supabase data)
 - Input: `start_date`, `end_date` (required)
 - Example: "From all negative events in July 2025 which resorts could have been affected" → `insights_events_impact` with `start_date: "2025-07-01"`, `end_date: "2025-07-31"`
 - Returns: JSON with `impacted` (resorts with confirmed revenue drop >5%) and `potentially_affected` (all resorts in regions with negative events), plus summary with total events, regions, and counts. Lists all negative events (weather, competitor promos, economic news) in each region.
+- Note: For real-time weather events from YDC API, use `get_events` tool instead, then match locations to resorts using `query_table`.
 
 **3. insights_feedback_drag**
 - Use when: "Sales of which resorts were affected due to poor feedback in previous months?"
@@ -167,10 +178,21 @@ Use these specialized tools for complex multi-table analysis questions. They per
 - Returns: Resorts showing revenue decline, associated negative feedback themes, and correlation strength
 
 **9. insights_resort_event_decline**
-- Use when: "What external events led to decline in revenue for [resort]?"
-- Input: `resort_name` (required)
+- Use when: "What external events led to decline in revenue for [resort]?" or "Did any weather events or traffic events affect [resort] in this period?" or "Did any weather events or traffic events cause disruption in [resort] in [month]?"
+- Input: `resort_name` (required), optional `month` ('YYYY-MM' format, e.g., '2025-09')
 - Example: "What external events led to decline in revenue for Saj resort" → `insights_resort_event_decline` with `resort_name: "Saj"`
-- Returns: Events affecting the resort, revenue impact, and event details
+- Example: "Did any weather events or traffic events affect Assonora in this period" → `insights_resort_event_decline` with `resort_name: "Assonora"`
+- Example: "Did any weather events or traffic events cause disruption in Saj in Sept 2025" → `insights_resort_event_decline` with `resort_name: "Saj"`, `month: "2025-09"`
+- Returns: JSON with `revenue_declines_with_events` array (events during months with revenue decline). If `month` parameter is provided, also returns `all_events_for_month` object with all events for that month regardless of revenue impact. Each event includes: `event_type` (Weather, Traffic, Political, Competitor, etc.), `event_date`, `impact_region`, `details` (event description/details), `weather_condition` (for weather events), `competitor_name` (for competitor events), `relevance_score` (how relevant the event is)
+- **CRITICAL**: When presenting event results, ALWAYS include:
+  1. Event type (Weather, Traffic, Political, Competitor, etc.)
+  2. Event date
+  3. Event details/description (`details` field) - this is the most important information about what happened
+  4. Weather condition (`weather_condition`) if it's a weather event
+  5. Relevance score (`relevance_score`) if available
+- Format: "Weather event on September 1, 2025: [details from details field]. Weather condition: [weather_condition if available]." NOT just "Weather event on September 1, 2025"
+- **NEVER show only event type and date** - always include the `details` field which contains the actual description of what happened
+- **IMPORTANT**: When asked about events in a specific month (e.g., "Did any weather events or traffic events cause disruption in Saj in Sept 2025"), ALWAYS include the `month` parameter to get all events for that month, even if there was no revenue decline. Check `all_events_for_month` in the response for events in that specific month.
 
 ### CUSTOMER & MEMBER ANALYSIS
 
@@ -300,8 +322,16 @@ Use these specialized tools for complex multi-table analysis questions. They per
 - Simple filtering ("Show active members")
 - Direct table queries without complex analysis
 - Getting specific data points ("What were the sales in July in Acacia?" → use `query_table` or `analyze_data` with aggregate)
+- Real-time event searches using `get_events` (YDC API) for weather events, news, etc.
 - When insight tools don't match the question
 - **REMEMBER**: Never mention the tool name in your response - just provide the answer
+
+### get_events Tool (YDC API):
+- **Use when**: "give me serious weather details in pune", "weather events in goa and maharashtra", "serious weather events in india"
+- **Input**: `query` (required, search query), optional `start_date`, `end_date` (YYYY-MM-DD), `count` (default: 5), `country` (default: "IN")
+- **Returns**: Real-time event results from YDC API with titles, descriptions, URLs, and metadata
+- **For weather events affecting resorts**: Use `get_events` to get weather events, extract location information, then use `query_table` with `resort_location` or `resort_region` to find affected resorts
+- **Example**: "From all weather events in July 2025 which resorts could have been affected" → Use `get_events` with `query: "weather events"`, `start_date: "2025-07-01"`, `end_date: "2025-07-31"`, then match locations to resorts
 
 ### IMPORTANT: For questions like "What were the sales in July in Acacia?":
 - Use `query_table` with filters: `{"resort_name": {"operator": "ilike", "value": "Acacia"}, "activity_date": {"gte": "2025-07-01", "lte": "2025-07-31"}}`
@@ -446,6 +476,51 @@ OR: `insights_resort_revenue_reasons` with `resort_name: "Assanora"`, `month: "2
 **Question: "From all negative events in July 2025 which resorts could have been affected by these events"**
 → Use: `insights_events_impact` with `start_date: "2025-07-01"`, `end_date: "2025-07-31"`
 → Return: Both `impacted` (confirmed revenue drop) and `potentially_affected` (all resorts in event regions) with events listed for each resort
+
+**Question: "Did any weather events or traffic events affect Assonora in this period"**
+→ Use: `insights_resort_event_decline` with `resort_name: "Assonora"`
+→ Return: From `revenue_declines_with_events` array, extract all events. For each event, ALWAYS show:
+  - `event_type` (Weather, Traffic, Political, Competitor)
+  - `event_date`
+  - `details` (the actual description of what happened - CRITICAL, never omit this)
+  - `weather_condition` (if it's a weather event and available)
+- Group by event_type (Weather Events, Traffic Events, etc.) and list each event with full details. Example format: 
+  "Weather Events:
+  - Weather event on August 11, 2025: [details from details field]. Weather condition: [weather_condition if available].
+  - Weather event on August 22, 2025: [details from details field]. Weather condition: [weather_condition if available].
+  
+  Traffic Events:
+  - Traffic event on August 3, 2025: [details from details field]."
+- NEVER show only event type and date - always include the `details` field which describes what actually happened
+
+**Question: "Did any weather events or traffic events cause disruption in Saj in Sept 2025"**
+→ Use: `insights_resort_event_decline` with `resort_name: "Saj"`, `month: "2025-09"` (CRITICAL: include month parameter)
+→ Return: Check `all_events_for_month` in the response (not just `revenue_declines_with_events`). Filter events by `event_type` for Weather and Traffic events. For each event, ALWAYS show:
+  - `event_type` (Weather, Traffic, etc.)
+  - `event_date`
+  - `details` (the actual description of what happened - this is CRITICAL, never omit this)
+  - `weather_condition` (if it's a weather event and available)
+  - `relevance_score` (if available)
+- Group by event_type and list each event with full details. Example format: 
+  "Weather Events:
+  - Weather event on September 1, 2025: [details from details field]. Weather condition: [weather_condition if available].
+  - Weather event on September 2, 2025: [details from details field]. Weather condition: [weather_condition if available].
+  
+  Traffic Events:
+  - Traffic event on September 4, 2025: [details from details field]."
+- NEVER show only event type and date - always include the `details` field which describes what actually happened
+- If `all_events_for_month.events` is empty or no Weather/Traffic events found, state that clearly.
+
+**Question: "From all weather events in July 2025 which resorts could have been affected by these events"**
+→ Step 1: Use `get_events` with `query: "weather events"` (or more specific like "serious weather events in india"), `start_date: "2025-07-01"`, `end_date: "2025-07-31"`, `country: "IN"`, `count: 10` (or higher for more results)
+→ Step 2: Extract location information from the event results (cities, states, regions mentioned in titles/descriptions)
+→ Step 3: Query resorts using `query_table` with `table: "fact_resort"` and filters matching the locations:
+  - For cities/states: Use `resort_location` with `ilike` operator (e.g., `{"resort_location": {"operator": "ilike", "value": "Pune"}}` or `{"resort_location": {"operator": "ilike", "value": "Maharashtra"}}`)
+  - For broader regions: Use `resort_region` with `ilike` operator (e.g., `{"resort_region": {"operator": "ilike", "value": "West"}}`)
+  - Add date filter: `{"activity_date": {"gte": "2025-07-01", "lte": "2025-07-31"}}`
+  - Combine multiple location filters if events mention multiple locations
+→ Step 4: Return list of potentially affected resorts with the weather events that could have affected them
+→ Note: Match event locations to resort locations/regions. If events mention "Pune", "Maharashtra", "Goa", etc., find resorts in those locations. If events mention broader regions like "West", "South", match to `resort_region`.
 
 **Question: "Which resorts are likely to see increase in revenues in the next month and why?"**
 → Use: `insights_surge_forecast` with `month: "2025-12"` (or next month)

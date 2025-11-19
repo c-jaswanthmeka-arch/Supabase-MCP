@@ -433,26 +433,58 @@ const tools: Tool[] = [
       },
     },
   },
+  // COMMENTED OUT: Old get_events tool using Supabase fact_event table
+  // {
+  //   name: "get_events",
+  //   description:
+  //     "Retrieve event data from the fact_event table. Use ONLY when user wants to SEE event records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. Column names: 'event_date' for date queries, 'impact_region' for regional filtering. Event types: 'Local News', 'Economic News', 'Major Weather', 'Competitor Promo', 'Local Event'. Use 'weather_condition', 'competitor_name', 'relevance_score', 'details_description' for analysis. Important for sales/revenue analysis: Query events table to find potential reasons for low sales (weather, competitor promotions, economic factors, local events). Use to identify which resorts were affected by external events in a specific time period. Filter by 'impact_region' to find events affecting specific regions. Cross-reference with resort data to identify correlations between events and sales performance. For questions about resorts affected by events: Query events for a specific time period/region, then cross-reference with resort data to identify affected resorts. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+  //   inputSchema: {
+  //     type: "object",
+  //     properties: {
+  //       limit: {
+  //         type: "number",
+  //         description: "Maximum number of records to return",
+  //       },
+  //       order: {
+  //         type: "string",
+  //         description: "Order by field (e.g., 'id.asc', 'created_at.desc')",
+  //       },
+  //       select: {
+  //         type: "string",
+  //         description: "Comma-separated list of fields to select",
+  //       },
+  //     },
+  //   },
+  // },
   {
     name: "get_events",
     description:
-      "Retrieve event data from the fact_event table. Use ONLY when user wants to SEE event records (not count them). NEVER use for counting - always use analyze_data for counts. When user asks for 'all' records, omit the limit parameter. When user asks for a specific number, set limit to that number. Column names: 'event_date' for date queries, 'impact_region' for regional filtering. Event types: 'Local News', 'Economic News', 'Major Weather', 'Competitor Promo', 'Local Event'. Use 'weather_condition', 'competitor_name', 'relevance_score', 'details_description' for analysis. Important for sales/revenue analysis: Query events table to find potential reasons for low sales (weather, competitor promotions, economic factors, local events). Use to identify which resorts were affected by external events in a specific time period. Filter by 'impact_region' to find events affecting specific regions. Cross-reference with resort data to identify correlations between events and sales performance. For questions about resorts affected by events: Query events for a specific time period/region, then cross-reference with resort data to identify affected resorts. IMPORTANT: Execute queries directly without showing your thinking process or step-by-step reasoning. Provide concise responses with only the results.",
+      "Search for real-time events using YDC API. Use for questions about weather events, news, or any events in specific locations. Input: query (search query like 'serious weather events in pune' or 'weather details in goa'), optional start_date and end_date (YYYY-MM-DD format for date range), optional count (number of results, default 5), optional country (ISO country code like 'IN' for India). Output: JSON with event results including titles, descriptions, URLs, and metadata. Use for questions like 'give me serious weather details in pune', 'weather events in goa and maharashtra', etc. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
-        limit: {
+        query: {
+          type: "string",
+          description: "Search query (e.g., 'serious weather events in pune', 'weather details in goa')",
+        },
+        start_date: {
+          type: "string",
+          description: "Start date in YYYY-MM-DD format (optional, for date range filtering)",
+        },
+        end_date: {
+          type: "string",
+          description: "End date in YYYY-MM-DD format (optional, for date range filtering)",
+        },
+        count: {
           type: "number",
-          description: "Maximum number of records to return",
+          description: "Number of results to return (default: 5)",
         },
-        order: {
+        country: {
           type: "string",
-          description: "Order by field (e.g., 'id.asc', 'created_at.desc')",
-        },
-        select: {
-          type: "string",
-          description: "Comma-separated list of fields to select",
+          description: "ISO country code (e.g., 'IN' for India, optional)",
         },
       },
+      required: ["query"],
     },
   },
   {
@@ -838,11 +870,12 @@ const tools: Tool[] = [
   {
     name: "insights_resort_event_decline",
     description:
-      "Identify external events that led to revenue decline for a specific resort. Analyzes events in the resort's region/time period and correlates with revenue drops. Input: resort_name. Output: JSON with events affecting the resort, revenue impact, and event details. Use for questions like 'What external events led to decline in revenue for Saj resort'. Do not expose internal steps.",
+      "Identify external events that led to revenue decline for a specific resort, or find all events for a specific month/period. Analyzes events in the resort's region/time period and correlates with revenue drops. Input: resort_name (required), optional month ('YYYY-MM' format) to get all events for that specific month even if there's no revenue decline. Output: JSON with events affecting the resort, revenue impact, and event details. If month is specified, also returns all_events_for_month array with all events for that month regardless of revenue impact. Use for questions like 'What external events led to decline in revenue for Saj resort' or 'Did any weather events or traffic events cause disruption in Saj in Sept 2025'. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
-        resort_name: { type: "string", description: "Name of the resort (e.g., 'Saj')" }
+        resort_name: { type: "string", description: "Name of the resort (e.g., 'Saj')" },
+        month: { type: "string", description: "Optional: Specific month to analyze (YYYY-MM format, e.g., '2025-09'). If provided, returns all events for that month even if there's no revenue decline." }
       },
       required: ["resort_name"]
     }
@@ -956,25 +989,110 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         };
       }
 
-      case "get_events": {
-        const eventParams: Record<string, string> = {};
-        if (args?.limit) {
-          eventParams.limit = String(args.limit);
-        } else {
-          eventParams.limit = "10000";
-        }
-        if (args?.order) eventParams.order = String(args.order);
-        if (args?.select) eventParams.select = String(args.select);
+      // COMMENTED OUT: Old get_events handler using Supabase fact_event table
+      // case "get_events": {
+      //   const eventParams: Record<string, string> = {};
+      //   if (args?.limit) {
+      //     eventParams.limit = String(args.limit);
+      //   } else {
+      //     eventParams.limit = "10000";
+      //   }
+      //   if (args?.order) eventParams.order = String(args.order);
+      //   if (args?.select) eventParams.select = String(args.select);
 
-        const data = await querySupabaseTable("fact_event", eventParams);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(data, null, 2),
-            },
-          ],
+      //   const data = await querySupabaseTable("fact_event", eventParams);
+      //   return {
+      //     content: [
+      //       {
+      //         type: "text",
+      //         text: JSON.stringify(data, null, 2),
+      //       },
+      //     ],
+      //   };
+      // }
+
+      case "get_events": {
+        const { query, start_date, end_date, count = 5, country = "IN" } = args as {
+          query: string;
+          start_date?: string;
+          end_date?: string;
+          count?: number;
+          country?: string;
         };
+
+        if (!query) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({ error: "Query parameter is required" }, null, 2),
+              },
+            ],
+          };
+        }
+
+        // Build YDC API URL
+        const ydcUrl = new URL("https://ydc-index.io/v1/search");
+        ydcUrl.searchParams.append("query", query);
+        ydcUrl.searchParams.append("count", String(count));
+        ydcUrl.searchParams.append("safesearch", "strict");
+        ydcUrl.searchParams.append("livecrawl", "all");
+        
+        if (country) {
+          ydcUrl.searchParams.append("country", country);
+        }
+
+        // Add freshness date range if provided
+        if (start_date && end_date) {
+          // Format: YYYY-MM-DD to YYYY-MM-DD (e.g., "2025-10-01to2025-10-31")
+          ydcUrl.searchParams.append("freshness", `${start_date}to${end_date}`);
+        } else if (start_date) {
+          // If only start_date provided, use it as both start and end
+          ydcUrl.searchParams.append("freshness", `${start_date}to${start_date}`);
+        } else if (end_date) {
+          // If only end_date provided, use it as both start and end
+          ydcUrl.searchParams.append("freshness", `${end_date}to${end_date}`);
+        }
+
+        try {
+          const response = await fetch(ydcUrl.toString(), {
+            method: "GET",
+            headers: {
+              "X-API-Key": "ydc-sk-ab00c889ec8faa3f-8DIVRUMJAVKnyNEJ6pDOpOW9Z8Hw0Se5-0a3e037d",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`YDC API error: ${response.status} ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(data, null, 2),
+              },
+            ],
+          };
+        } catch (error: any) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    error: "Failed to fetch events from YDC API",
+                    message: error.message || String(error),
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
       }
 
       case "get_member_aggregated": {
@@ -2581,7 +2699,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       }
 
       case "insights_resort_event_decline": {
-        const { resort_name } = args as { resort_name: string };
+        const { resort_name, month } = args as { resort_name: string; month?: string };
         
         const resorts = await querySupabaseTable("fact_resort", buildQuery({ 
           resort_name: { operator: "ilike", value: resort_name }
@@ -2646,20 +2764,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
                 revenue_decline_inr: delta,
                 revenue_decline_pct: prevMonth.total_revenue ? ((delta / prevMonth.total_revenue) * 100).toFixed(1) : 0,
                 events: monthEvents.map((e:any)=>({
-                  event_type: e.event_type,
-                  event_date: e.event_date,
-                  impact_region: e.impact_region,
-                  details: e.details_description,
-                  weather_condition: e.weather_condition,
-                  competitor_name: e.competitor_name,
-                  relevance_score: e.relevance_score
+                  event_type: e.event_type || null,
+                  event_date: e.event_date || null,
+                  impact_region: e.impact_region || null,
+                  details: e.details_description || e.event_details_description || e.details || null,
+                  weather_condition: e.weather_condition || null,
+                  competitor_name: e.competitor_name || null,
+                  relevance_score: e.relevance_score || e.event_relevance_score || null
                 }))
               });
             }
           }
         }
 
-        return { content: [{ type: "text", text: JSON.stringify({ 
+        // If month is specified, also return all events for that month even if there's no revenue decline
+        let allEventsForMonth: any[] = [];
+        if (month) {
+          const monthEvents = (events || []).filter((e:any)=>e.event_date && e.event_date.substring(0,7) === month);
+          allEventsForMonth = monthEvents.map((e:any)=>({
+            event_type: e.event_type || null,
+            event_date: e.event_date || null,
+            impact_region: e.impact_region || null,
+            details: e.details_description || e.event_details_description || e.details || null,
+            weather_condition: e.weather_condition || null,
+            competitor_name: e.competitor_name || null,
+            relevance_score: e.relevance_score || e.event_relevance_score || null
+          }));
+        }
+
+        const result: any = {
           resort_name,
           region,
           analysis_period: { start_date: startDate, end_date: endDate },
@@ -2668,7 +2801,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             total_decline_periods: revenueDeclines.length,
             total_events: revenueDeclines.reduce((a:any,r:any)=>a+r.events.length, 0)
           }
-        }, null, 2) }] };
+        };
+
+        // Add all events for specified month if month parameter was provided
+        if (month && allEventsForMonth.length > 0) {
+          result.all_events_for_month = {
+            month: month,
+            events: allEventsForMonth,
+            total_events: allEventsForMonth.length
+          };
+        } else if (month) {
+          result.all_events_for_month = {
+            month: month,
+            events: [],
+            total_events: 0
+          };
+        }
+
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       case "insights_feedback_demographics": {

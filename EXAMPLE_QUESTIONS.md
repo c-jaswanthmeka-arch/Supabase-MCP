@@ -208,6 +208,13 @@ This document provides a comprehensive list of questions that can be asked to th
 - "Show me weather impact on revenue"
 - "Which resorts are most affected by weather?"
 
+### Real-Time Weather Events (YDC API)
+- "Give me serious weather details in pune"
+- "What are the serious weather events in goa and maharashtra?"
+- "From all weather events in July 2025 which resorts could have been affected by these events"
+- "Show me weather events in maharashtra in October 2025"
+- "Which resorts in goa could be affected by recent weather events?"
+
 ### General Event Impact
 - "Which resorts were affected by external events in October?"
 - "What events impacted sales in September 2025?"
