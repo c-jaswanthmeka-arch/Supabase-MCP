@@ -1720,12 +1720,48 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           feedback_date: { gte: start, lte: end }
         }));
 
+        // Fetch resort info to get region for event filtering
+        let region: string | null = null;
+        try {
+          const resorts = await querySupabaseTable("fact_resort", buildQuery({ 
+            resort_name: { operator: "ilike", value: resort_name }
+          }));
+          if (resorts && resorts.length > 0) {
+            region = resorts[0].resort_region || null;
+          }
+        } catch (error) {
+          console.error("Error fetching resort info:", error);
+        }
+
+        // Fetch events for the same date range and region
+        let events: any[] = [];
+        try {
+          const eventFilters: Record<string, any> = { event_date: { gte: start, lte: end } };
+          if (region) eventFilters.impact_region = { operator: "ilike", value: region };
+          events = await querySupabaseTable("fact_event", buildQuery(eventFilters)) || [];
+        } catch (error) {
+          console.error("Error fetching events:", error);
+        }
+
+        // Format events with all details
+        const formattedEvents = events.map((e:any)=>({
+          event_type: e.event_type || null,
+          event_date: e.event_date || null,
+          impact_region: e.impact_region || null,
+          details: e.details_description || e.event_details_description || e.details || null,
+          weather_condition: e.weather_condition || null,
+          competitor_name: e.competitor_name || null,
+          relevance_score: e.relevance_score || e.event_relevance_score || null
+        }));
+
         if (!Array.isArray(feedback) || feedback.length === 0) {
           return { content: [{ type: "text", text: JSON.stringify({ 
             resort_name, 
             date_range: { start, end },
             message: "No feedback found for this resort in the specified date range",
-            total_feedback: 0
+            total_feedback: 0,
+            events: formattedEvents,
+            total_events: formattedEvents.length
           }, null, 2) }] };
         }
 
@@ -1797,6 +1833,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
               platform: x.platform,
               issue_type: x.issue_type_category,
               date: x.feedback_date
+            }))
+          },
+          events: formattedEvents,
+          total_events: formattedEvents.length,
+          events_summary: {
+            by_type: Object.entries(groupBy(formattedEvents, (e:any)=>e.event_type || "Unknown")).map(([type, arr])=>({
+              event_type: type,
+              count: arr.length
             }))
           }
         };

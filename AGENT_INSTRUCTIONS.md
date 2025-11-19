@@ -154,7 +154,8 @@ Use these specialized tools for complex multi-table analysis questions. They per
 - Input: `resort_name` (required), `date_range` with `start` and `end` (required, format: YYYY-MM-DD)
 - Example: "What is the negative feedback for Saj in October 2025" → `insights_resort_feedback_analysis` with `resort_name: "Saj"`, `date_range: {start: "2025-10-01", end: "2025-10-31"}`
 - Example: "What are the top 3 feedback themes for positive feedback for Varca Beach in October 2025" → `insights_resort_feedback_analysis` with `resort_name: "Varca Beach"`, `date_range: {start: "2025-10-01", end: "2025-10-31"}` (returns `themes.positive_themes`)
-- Returns: Comprehensive feedback analysis including sentiment breakdown, key themes (top 3 positive and negative), NPS/CSAT scores, and sample quotes
+- Returns: Comprehensive feedback analysis including sentiment breakdown, key themes (top 3 positive and negative), NPS/CSAT scores, sample quotes, AND events that occurred during the same time period and region. The response includes `events` array with all events (each event has `event_type`, `event_date`, `details`, `weather_condition`, `competitor_name`, `relevance_score`), `total_events` count, and `events_summary.by_type` breakdown.
+- **IMPORTANT**: When presenting feedback results, ALWAYS also present the events from the `events` array. Group events by type (Weather, Traffic, Political, Competitor, etc.) and include full event details (not just dates). Format: "Weather event on [date]: [details from details field]. Weather condition: [weather_condition if available]."
 
 **6. insights_monthly_sales_comparison**
 - Use when: "Which resorts show decline/increase in revenue from [month1] to [month2]?" or "Which resorts show decline/increase in revenue between 2 months?"
@@ -459,11 +460,11 @@ OR: `insights_resort_revenue_reasons` with `resort_name: "Assanora"`, `month: "2
 
 **Question: "What is the negative feedback for Saj in October 2025"**
 → Use: `insights_resort_feedback_analysis` with `resort_name: "Saj"`, `date_range: {start: "2025-10-01", end: "2025-10-31"}`
-→ Return: `summary.negative_count`, `themes.negative_themes`, `sample_quotes.negative`
+→ Return: Present both feedback (`summary.negative_count`, `themes.negative_themes`, `sample_quotes.negative`) AND events (from `events` array). Group events by type and include full details (event type, date, details description, weather_condition if applicable).
 
 **Question: "What is the positive feedback for Varca Beach in October 2025"**
 → Use: `insights_resort_feedback_analysis` with `resort_name: "Varca Beach"`, `date_range: {start: "2025-10-01", end: "2025-10-31"}`
-→ Return: `summary.positive_count`, `themes.positive_themes`, `sample_quotes.positive`
+→ Return: Present both feedback (`summary.positive_count`, `themes.positive_themes`, `sample_quotes.positive`) AND events (from `events` array). Group events by type and include full details (event type, date, details description, weather_condition if applicable).
 
 **Question: "What are the top 3 feedback themes for positive feedback for Varca Beach in October 2025"**
 → Use: `insights_resort_feedback_analysis` with `resort_name: "Varca Beach"`, `date_range: {start: "2025-10-01", end: "2025-10-31"}`
