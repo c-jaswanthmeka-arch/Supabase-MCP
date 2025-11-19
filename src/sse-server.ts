@@ -1671,11 +1671,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const byResort = groupBy(redFb, (x:any)=>x.resort_name || "Unknown");
 
         const out = Object.entries(byResort).map(([resort, arr]) => {
-          const neg = arr.filter((x:any)=> (x.sentiment && String(x.sentiment).toLowerCase()==="negative") || safeNumber(x.nps_score) <= 6 || safeNumber(x.csat_score) <= 3);
+          // Filter for negative feedback: sentiment is "negative" OR NPS <= 6 OR CSAT <= 3
+          // Also exclude if sentiment is explicitly "positive" or scores indicate positive
+          const neg = arr.filter((x:any)=> {
+            const sentiment = x.sentiment ? String(x.sentiment).toLowerCase() : "";
+            const nps = safeNumber(x.nps_score);
+            const csat = safeNumber(x.csat_score);
+            
+            // Explicitly exclude positive feedback
+            if (sentiment === "positive" || nps >= 7 || csat >= 4) {
+              return false;
+            }
+            
+            // Include if explicitly negative OR low scores
+            return sentiment === "negative" || nps <= 6 || csat <= 3;
+          });
+          
+          // Only include sample quotes from verified negative feedback
+          const negativeQuotes = neg.slice(0, 5).map((x:any)=> {
+            const quote = x.issue_details_text || x.details_text || "";
+            return quote.trim();
+          }).filter((q: string) => q.length > 0);
+          
           return {
             resort_name: resort,
             negative_count: neg.length,
-            sample_quotes: neg.slice(0,5).map((x:any)=> x.issue_details_text || x.details_text).filter(Boolean),
+            sample_quotes: negativeQuotes,
             themes: topKeywords(neg.map((x:any)=>x.issue_details_text || x.details_text || ""), 8)
           };
         }).sort((a,b)=>b.negative_count - a.negative_count);
@@ -1697,13 +1718,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
         const byResort = groupBy(blueFb, (x:any)=>x.resort_name || "Unknown");
 
         const out = Object.entries(byResort).map(([resort, arr]) => {
-          const neg = arr.filter((x:any)=> (x.sentiment && String(x.sentiment).toLowerCase()==="negative") || safeNumber(x.nps_score) <= 6 || safeNumber(x.csat_score) <= 3);
+          // Filter for negative feedback: sentiment is "negative" OR NPS <= 6 OR CSAT <= 3
+          // Also exclude if sentiment is explicitly "positive" or scores indicate positive
+          const neg = arr.filter((x:any)=> {
+            const sentiment = x.sentiment ? String(x.sentiment).toLowerCase() : "";
+            const nps = safeNumber(x.nps_score);
+            const csat = safeNumber(x.csat_score);
+            
+            // Explicitly exclude positive feedback
+            if (sentiment === "positive" || nps >= 7 || csat >= 4) {
+              return false;
+            }
+            
+            // Include if explicitly negative OR low scores
+            return sentiment === "negative" || nps <= 6 || csat <= 3;
+          });
+          
+          // Only include sample quotes from verified negative feedback
+          const negativeQuotes = neg.slice(0, 5).map((x:any)=> {
+            const quote = x.issue_details_text || x.details_text || "";
+            return quote.trim();
+          }).filter((q: string) => q.length > 0);
+          
           return {
             resort_name: resort,
             total_feedback: arr.length,
             negative_count: neg.length,
             negative_percentage: arr.length ? +((neg.length/arr.length)*100).toFixed(1) : 0,
-            sample_quotes: neg.slice(0,5).map((x:any)=> x.issue_details_text || x.details_text).filter(Boolean),
+            sample_quotes: negativeQuotes,
             themes: topKeywords(neg.map((x:any)=>x.issue_details_text || x.details_text || ""), 8)
           };
         }).sort((a,b)=>b.negative_count - a.negative_count);
