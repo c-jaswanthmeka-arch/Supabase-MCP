@@ -829,7 +829,7 @@ const tools: Tool[] = [
   {
     name: "insights_unpaid_asf_feedback",
     description:
-      "Find feedback from members who have not paid Annual Subscription Fee (ASF) for 2 years. Identifies members with unpaid ASF for 2+ years and retrieves their feedback. Checks members with 'unpaid' or 'late' status in annual_fee_collection_status and verifies they haven't paid in 2+ years (based on last_holiday_date or date_joined). Output: JSON with member details, ASF payment status, total feedback count, negative feedback count, and their complaints/feedback (if any). Use for questions like 'Is there any negative feedback from members who have not paid ASF for 2 years, what is it' or 'Those members who have not paid ASF for 2 or more years what are their complaints'. Returns all feedback (not just negative) but highlights negative feedback separately. Do not expose internal steps.",
+      "Find feedback from members who have not paid Annual Subscription Fee (ASF) for 2 years. Identifies members with unpaid ASF for 2+ years by filtering fact_member table where annual_asf_fee_missed_years > 2, then retrieves their feedback. Output: JSON with member details including annual_asf_fee_missed_years, ASF payment status, total feedback count, negative feedback count, and their complaints/feedback (if any). Use for questions like 'Is there any negative feedback from members who have not paid ASF for 2 years, what is it' or 'Those members who have not paid ASF for 2 or more years what are their complaints' or 'Which members have not paid their ASF for 2 years'. Returns all feedback (not just negative) but highlights negative feedback separately. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -2504,72 +2504,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
       }
 
       case "insights_unpaid_asf_feedback": {
-        const twoYearsAgo = new Date();
-        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-        const cutoffDate = twoYearsAgo.toISOString().slice(0, 10);
-
-        const members = await querySupabaseTable("fact_member", buildQuery({})) || [];
-        
-        // First, let's try multiple approaches to identify unpaid members
-        const unpaidMembers = (members || []).filter((m:any) => {
-          const asfStatus = (m.annual_fee_collection_status || "").toLowerCase().trim();
-          const lastPaid = m.last_holiday_date;
-          const dateJoined = m.date_joined;
-          
-          // Approach 1: Check if status explicitly indicates unpaid/late
-          const hasUnpaidStatus = asfStatus === "unpaid" || asfStatus === "late" || 
-                                  asfStatus.includes("unpaid") || asfStatus.includes("late") ||
-                                  asfStatus === "pending" || asfStatus.includes("pending");
-          
-          // Approach 2: Check if member joined more than 2 years ago
-          const joinedMoreThan2YearsAgo = dateJoined && dateJoined < cutoffDate;
-          
-          // Approach 3: Check if last paid date is more than 2 years ago (or doesn't exist)
-          const lastPaidMoreThan2YearsAgo = !lastPaid || (lastPaid && lastPaid < cutoffDate);
-          
-          // Include members if:
-          // 1. Has unpaid/late status AND (joined >2 years ago OR last paid >2 years ago OR never paid)
-          if (hasUnpaidStatus) {
-            if (joinedMoreThan2YearsAgo || lastPaidMoreThan2YearsAgo || !lastPaid) {
-              return true;
-            }
-          }
-          
-          // 2. Joined >2 years ago AND (no last_holiday_date OR last_holiday_date >2 years ago) AND has unpaid status
-          if (joinedMoreThan2YearsAgo && (!lastPaid || lastPaid < cutoffDate) && hasUnpaidStatus) {
-            return true;
-          }
-          
-          // 3. More lenient: If joined >2 years ago and status is not "paid" or "active", include them
-          if (joinedMoreThan2YearsAgo && asfStatus && 
-              asfStatus !== "paid" && asfStatus !== "active" && asfStatus !== "current" &&
-              (!lastPaid || lastPaid < cutoffDate)) {
-            return true;
-          }
-          
-          return false;
-        });
+        // Directly filter members with annual_asf_fee_missed_years > 2
+        const unpaidMembers = await querySupabaseTable("fact_member", buildQuery({ 
+          annual_asf_fee_missed_years: { operator: "gt", value: 2 }
+        })) || [];
 
         if (unpaidMembers.length === 0) {
           // Provide diagnostic information to help understand why no members were found
-          const sampleStatuses = [...new Set((members || []).slice(0, 50).map((m:any) => m.annual_fee_collection_status).filter(Boolean))];
-          const membersWithUnpaidStatus = (members || []).filter((m:any) => {
-            const status = (m.annual_fee_collection_status || "").toLowerCase();
-            return status.includes("unpaid") || status.includes("late") || status.includes("pending");
-          }).length;
-          const membersJoinedMoreThan2Years = (members || []).filter((m:any) => 
-            m.date_joined && m.date_joined < cutoffDate
-          ).length;
+          const allMembers = await querySupabaseTable("fact_member", buildQuery({})) || [];
+          const membersWithAsfField = (allMembers || []).filter((m:any) => 
+            m.annual_asf_fee_missed_years !== null && m.annual_asf_fee_missed_years !== undefined
+          );
+          const sampleAsfValues = [...new Set((allMembers || []).slice(0, 50)
+            .map((m:any) => m.annual_asf_fee_missed_years)
+            .filter((v:any) => v !== null && v !== undefined))];
           
           return { content: [{ type: "text", text: JSON.stringify({ 
-            message: "No members found with unpaid ASF for 2+ years",
+            message: "No members found with unpaid ASF for 2+ years (annual_asf_fee_missed_years > 2)",
             diagnostic_info: {
-              total_members_checked: members.length,
-              members_with_unpaid_status: membersWithUnpaidStatus,
-              members_joined_more_than_2_years_ago: membersJoinedMoreThan2Years,
-              cutoff_date: cutoffDate,
-              sample_statuses_found: sampleStatuses.slice(0, 10),
-              note: "If you expected results, check if annual_fee_collection_status values match 'unpaid', 'late', or 'pending', and if members have date_joined or last_holiday_date before the cutoff date"
+              total_members_checked: allMembers.length,
+              members_with_asf_field: membersWithAsfField.length,
+              sample_asf_fee_missed_years_values: sampleAsfValues.slice(0, 10),
+              note: "Filtering by annual_asf_fee_missed_years > 2. If you expected results, check if the annual_asf_fee_missed_years column has values greater than 2."
             },
             members: []
           }, null, 2) }] };
@@ -2590,6 +2546,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
             member_name: `${m.member_first_name || ""} ${m.member_last_name || ""}`.trim(),
             membership_tier: m.membership_tier,
             annual_fee_status: m.annual_fee_collection_status,
+            annual_asf_fee_missed_years: m.annual_asf_fee_missed_years,
             last_holiday_date: m.last_holiday_date,
             date_joined: m.date_joined,
             total_feedback_count: memberFb.length,
@@ -2618,7 +2575,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           members_with_feedback: result.filter((m:any)=>m.total_feedback_count > 0).length,
           members_with_negative_feedback: result.filter((m:any)=>m.negative_feedback_count > 0).length,
           members_with_complaints: result.filter((m:any)=>m.negative_feedback_count > 0).length,
-          cutoff_date: cutoffDate,
+          filter_criteria: "annual_asf_fee_missed_years > 2",
           members: result
         }, null, 2) }] };
       }

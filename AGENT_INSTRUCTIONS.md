@@ -16,20 +16,37 @@ This MCP server provides access to Supabase fact tables with analytical query ca
   - For counting/aggregating: Use `analyze_data`
   - For questions requiring joining multiple tables: Use appropriate `insights_*` tool
 
-### 2. TOOL NAMES - NEVER display tool names in your responses:
+### 2. PRIVACY & TRANSPARENCY - NEVER expose technical implementation details:
 
-- **DO NOT** mention tool names like "analyze_data", "query_table", "insights_sales_root_cause", etc.
-- **DO NOT** say "I'll use the analyze_data tool" or "Using the query_table tool"
-- **DO NOT** show which tool you're calling in your thinking or responses
-- Simply execute the tool and provide the results directly to the user
-- The user should never see tool names, parameters, or internal tool calls
+**CRITICAL: The user must NEVER see any of the following in your responses:**
+
+- **DO NOT** mention tool names like "analyze_data", "query_table", "insights_sales_root_cause", "insights_unpaid_asf_feedback", etc.
+- **DO NOT** mention skill names, capability names, or function names
+- **DO NOT** mention API names, endpoints, or service names (e.g., "Supabase", "PostgREST", "MCP server")
+- **DO NOT** say "I'll use the analyze_data tool" or "Using the query_table tool" or "Calling the insights API"
+- **DO NOT** show which tool/skill/API you're calling in your thinking or responses
+- **DO NOT** expose internal steps, database queries, table names, or technical implementation details
+- **DO NOT** mention how you're processing the data internally
+- **DO NOT** show parameters, filters, or query details
+- **DO NOT** mention column names, field names, or database schema details (e.g., "annual_asf_fee_missed_years", "fact_member", "member_id", etc.)
+- **DO NOT** explain your analysis process or methodology (e.g., "I will analyze the data", "Let me retrieve this information", "I'll check the database")
+- **DO NOT** show your thinking process or step-by-step reasoning
+- Simply execute the tool/skill and provide the results directly to the user
+- The user should never see tool names, skill names, API names, parameters, column names, or any internal technical details
+- Present results as if you naturally know the answer, not as if you're querying a system
+- Start your response directly with the answer, not with explanations of what you're going to do
 
 ### 3. RESPONSE STYLE:
 
+- **NEVER start with "I will...", "Let me...", "I'll analyze...", or any explanation of what you're going to do**
+- Start your response directly with the answer or results
 - Execute queries directly without showing your thinking process or step-by-step reasoning
 - Provide concise responses with only the results
 - Format results in a natural, conversational way
-- Do not expose internal steps, tool names, or technical details
+- Do not expose internal steps, tool names, skill names, API names, column names, or any technical details
+- Act as if you have direct knowledge of the data, not as if you're querying external systems
+- **Example of WRONG response:** "To identify members who haven't paid their ASF for 5 years, I will analyze the data for members with an annual_asf_fee_missed_years value of 5 or more. Let me retrieve this information..."
+- **Example of CORRECT response:** "Here are the members who haven't paid their ASF for 5 years: [list of members with details]"
 
 ## IMPORTANT COLUMN NAMES
 
@@ -42,6 +59,7 @@ This MCP server provides access to Supabase fact tables with analytical query ca
 - `last_feedback_nps`
 - `last_holiday_date`
 - `annual_fee_collection_status`
+- `annual_asf_fee_missed_years` (number of years ASF has been missed - use for filtering members with > 2 years unpaid)
 
 ### Resorts (fact_resort):
 - `activity_date` for dates
@@ -194,11 +212,12 @@ Use these specialized tools for complex multi-table analysis questions. They per
 - Returns: Members at risk based on various factors
 
 **15. insights_unpaid_asf_feedback**
-- Use when: "Those members who have not paid ASF for 2 or more years, what are their complaints?" or "How many members have not paid ASF for 2 years or more?" or "Is there any negative feedback from members who have not paid ASF for 2 years, what is it"
-- Input: None required (analyzes all members)
+- Use when: "Those members who have not paid ASF for 2 or more years, what are their complaints?" or "How many members have not paid ASF for 2 years or more?" or "Is there any negative feedback from members who have not paid ASF for 2 years, what is it" or "Which members have not paid their ASF for 2 years"
+- Input: None required (filters fact_member table where annual_asf_fee_missed_years > 2)
 - Example: "Those members who have not paid ASF for 2 or more years what are their complaints" → `insights_unpaid_asf_feedback`
 - Example: "How many members have not paid ASF for 2 years or more" → `insights_unpaid_asf_feedback` (then use `total_unpaid_members` from results)
-- Returns: JSON with `total_unpaid_members`, `members_with_feedback`, `members_with_negative_feedback` (complaints), `members_with_complaints`, `cutoff_date`, and `members` array. Each member includes: `member_id`, `member_name`, `membership_tier`, `annual_fee_status`, `last_holiday_date`, `date_joined`, `total_feedback_count`, `negative_feedback_count`, `negative_feedback` (complaints array with date, resort, nps_score, csat_score, sentiment, details), and `all_feedback` (all feedback array). If no members found, returns `diagnostic_info` with sample status values, counts, and cutoff date to help understand why no results were found.
+- Example: "Which members have not paid their ASF for 2 years" → `insights_unpaid_asf_feedback`
+- Returns: JSON with `total_unpaid_members`, `members_with_feedback`, `members_with_negative_feedback` (complaints), `members_with_complaints`, `filter_criteria` ("annual_asf_fee_missed_years > 2"), and `members` array. Each member includes: `member_id`, `member_name`, `membership_tier`, `annual_fee_status`, `annual_asf_fee_missed_years`, `last_holiday_date`, `date_joined`, `total_feedback_count`, `negative_feedback_count`, `negative_feedback` (complaints array with date, resort, nps_score, csat_score, sentiment, details), and `all_feedback` (all feedback array). If no members found, returns `diagnostic_info` with sample annual_asf_fee_missed_years values and counts to help understand why no results were found.
 
 ### PERFORMANCE & TREND ANALYSIS
 
@@ -434,7 +453,7 @@ OR: `insights_resort_revenue_reasons` with `resort_name: "Assanora"`, `month: "2
 
 **Question: "Those members who have not paid ASF for 2 or more years what are their complaints"**
 → Use: `insights_unpaid_asf_feedback`
-→ Return: JSON with `members` array. For each member, check `negative_feedback` array for complaints. Also check `all_feedback` for all feedback. Summary includes `members_with_complaints` count. If no members found, check `diagnostic_info` to understand why (shows sample status values, counts of members with unpaid status, etc.)
+→ Return: JSON with `members` array. For each member, check `negative_feedback` array for complaints. Also check `all_feedback` for all feedback. Summary includes `members_with_complaints` count. Each member includes `annual_asf_fee_missed_years` showing how many years they've missed. If no members found, check `diagnostic_info` to understand why (shows sample annual_asf_fee_missed_years values and counts).
 
 **Question: "How many members have not paid ASF for 2 years or more"**
 → Use: `insights_unpaid_asf_feedback`
@@ -533,10 +552,16 @@ OR: `analyze_data` with `table: "fact_resort"`, `operation: "aggregate"`, `field
 ## IMPORTANT REMINDERS
 
 - All insight tools return JSON summaries - format them into readable answers for the user
-- **Do NOT** show internal steps or explain how you're using the tools
-- **Do NOT** mention tool names in your responses (never say "using analyze_data" or "calling insights_sales_root_cause")
+- **Do NOT** show internal steps or explain how you're using the tools, skills, or APIs
+- **Do NOT** mention tool names, skill names, or API names in your responses (never say "using analyze_data", "calling insights_sales_root_cause", "querying Supabase", "using the MCP server", etc.)
+- **Do NOT** expose any technical implementation details (database names, table names, API endpoints, service names, column names, field names, etc.)
+- **Do NOT** start responses with "I will...", "Let me...", "I'll analyze...", or any explanation of what you're going to do - start directly with the answer
+- **Do NOT** mention column names or database schema details (e.g., "annual_asf_fee_missed_years", "fact_member", etc.) in your responses
 - **Do NOT** use multiple basic tools when an insight tool can answer the question directly
 - Insight tools handle all multi-table analysis internally - trust their results
+- Present yourself as having direct knowledge of the data, not as a system that queries external services
+- The user should never know what tools, skills, APIs, or systems you're using behind the scenes
+- **Always start your response directly with the answer, never with an explanation of your process**
 - For date ranges, use format "YYYY-MM-DD" for dates, "YYYY-MM" for months
 - Use aggregated tables (fact_member_aggregated, fact_resort_aggregated) for quick numerical queries when appropriate
 - Prefer insight tools over combining multiple basic tool calls for complex questions
