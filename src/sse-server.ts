@@ -84,6 +84,22 @@ function previousMonth(ym: string) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+// Helper function to format INR amounts in Lakhs and Crores
+function formatInrToLakhsCrores(amount: number): string {
+  const absAmount = Math.abs(amount);
+  if (absAmount >= 10000000) { // >= 1 Crore
+    const crores = absAmount / 10000000;
+    return `${crores.toFixed(2)}CR`;
+  } else if (absAmount >= 100000) { // >= 1 Lakh
+    const lakhs = absAmount / 100000;
+    return `${lakhs.toFixed(2)}L`;
+  } else {
+    // For amounts less than 1 Lakh, show in thousands
+    const thousands = absAmount / 1000;
+    return `${thousands.toFixed(2)}K`;
+  }
+}
+
 function safeNumber(n: any) {
   const v = Number(n);
   return Number.isFinite(v) ? v : 0;
@@ -687,7 +703,7 @@ const tools: Tool[] = [
   {
     name: "insights_member_lifetime_value",
     description:
-      "Analyze member lifetime value (LTV) by region, membership tier, or date joined. Identifies high-value segments, average LTV trends, and members at risk. Optional filters: region, membership_tier, start_date, end_date. Output: JSON with LTV statistics, segment analysis, and risk indicators. Do not expose internal steps.",
+      "Analyze member lifetime value (LTV) by region, membership tier, or date joined. Identifies high-value segments, average LTV trends, and members at risk. Returns explicit highest_ltv_tier and lowest_ltv_tier fields to answer questions about maximum and minimum spenders by tier. Optional filters: region, membership_tier, start_date, end_date. Output: JSON with LTV statistics, by_tier analysis (sorted by average LTV descending), by_region analysis, highest_ltv_tier, lowest_ltv_tier, and at_risk_members. Do not expose internal steps.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1928,6 +1944,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           total_ltv: arr.reduce((a:any,m:any)=>a+safeNumber(m.lifetime_value_inr),0)
         })).sort((a,b)=>b.average_ltv - a.average_ltv);
 
+        // Identify highest and lowest spending tiers
+        const highestLtvTier = tierAnalysis.length > 0 ? {
+          membership_tier: tierAnalysis[0].membership_tier,
+          average_ltv: tierAnalysis[0].average_ltv,
+          total_ltv: tierAnalysis[0].total_ltv,
+          member_count: tierAnalysis[0].member_count
+        } : null;
+
+        const lowestLtvTier = tierAnalysis.length > 0 ? {
+          membership_tier: tierAnalysis[tierAnalysis.length - 1].membership_tier,
+          average_ltv: tierAnalysis[tierAnalysis.length - 1].average_ltv,
+          total_ltv: tierAnalysis[tierAnalysis.length - 1].total_ltv,
+          member_count: tierAnalysis[tierAnalysis.length - 1].member_count
+        } : null;
+
         const atRisk = members.filter((m:any)=> {
           const ltv = safeNumber(m.lifetime_value_inr);
           const isActive = m.is_active === true;
@@ -1953,7 +1984,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           ].filter(Boolean)
         }));
 
-        return { content: [{ type: "text", text: JSON.stringify({ ltv_statistics: ltvStats, by_region: regionAnalysis, by_tier: tierAnalysis, at_risk_members: atRisk.slice(0,50) }, null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ 
+          ltv_statistics: ltvStats, 
+          by_region: regionAnalysis, 
+          by_tier: tierAnalysis,
+          highest_ltv_tier: highestLtvTier,
+          lowest_ltv_tier: lowestLtvTier,
+          at_risk_members: atRisk.slice(0,50) 
+        }, null, 2) }] };
       }
 
       case "insights_regional_performance": {
@@ -2478,19 +2516,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
           }
         }
 
-        lowSales.sort((a,b)=>a.revenue_delta_inr - b.revenue_delta_inr);
-        increasedSales.sort((a,b)=>b.revenue_delta_inr - a.revenue_delta_inr);
+        // Sort by percentage_change in descending order (highest % first)
+        lowSales.sort((a,b)=>b.percentage_change - a.percentage_change);
+        increasedSales.sort((a,b)=>b.percentage_change - a.percentage_change);
+
+        // Add formatted amounts to each resort
+        const addFormattedAmounts = (resorts: any[]) => {
+          return resorts.map((r: any) => ({
+            ...r,
+            revenue_delta_formatted: formatInrToLakhsCrores(r.revenue_delta_inr),
+            month1_revenue_formatted: formatInrToLakhsCrores(r.month1_revenue_inr),
+            month2_revenue_formatted: formatInrToLakhsCrores(r.month2_revenue_inr)
+          }));
+        };
+
+        const lowSalesFormatted = addFormattedAmounts(lowSales);
+        const increasedSalesFormatted = addFormattedAmounts(increasedSales);
 
         return { content: [{ type: "text", text: JSON.stringify({ 
           month1,
           month2,
-          resorts_with_low_sales: lowSales,
-          resorts_with_increased_sales: increasedSales,
+          resorts_with_low_sales: lowSalesFormatted,
+          resorts_with_increased_sales: increasedSalesFormatted,
           summary: {
             total_resorts_with_decline: lowSales.length,
             total_resorts_with_increase: increasedSales.length,
-            largest_decline: lowSales.length ? lowSales[0] : null,
-            largest_increase: increasedSales.length ? increasedSales[0] : null
+            largest_decline: lowSales.length ? lowSalesFormatted[0] : null,
+            largest_increase: increasedSales.length ? increasedSalesFormatted[0] : null
           }
         }, null, 2) }] };
       }

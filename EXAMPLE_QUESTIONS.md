@@ -135,6 +135,8 @@ This document provides a comprehensive list of questions that can be asked to th
 - "Show me LTV analysis by membership tier"
 - "What's the average lifetime value for Red tier members?"
 - "Compare member lifetime value across regions"
+- "Which tier members are our maximum spenders in terms of lifetime value?"
+- "Which tier members are our least spenders in terms of lifetime value?"
 
 ### Churn Risk
 - "Which members are at risk of churning?"

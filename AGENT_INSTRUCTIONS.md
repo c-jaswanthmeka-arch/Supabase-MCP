@@ -50,6 +50,13 @@ This MCP server provides access to Supabase fact tables with analytical query ca
 - **Example of WRONG event response:** "Weather Events: August 11, 2025; August 22, 2025" (only dates, no event types)
 - **Example of CORRECT event response:** "Weather Events: Weather event on August 11, 2025; Weather event on August 22, 2025. Traffic Events: Traffic event on August 3, 2025" (always include event_type with date)
 
+### 4. AMOUNT FORMATTING:
+- **ALWAYS use formatted amounts** (Lakhs/Crores format) when available in tool responses
+- When a tool returns `*_formatted` fields (e.g., `revenue_delta_formatted`, `month1_revenue_formatted`), **ALWAYS use those** instead of raw INR amounts
+- Format examples: "56L" (56 Lakhs), "0.56CR" (0.56 Crores), "5.6CR" (5.6 Crores)
+- For revenue comparisons, always show both the formatted amount and percentage: "Revenue increased by 56L (12.5% increase)"
+- When showing lists sorted by percentage, present them in the order returned (already sorted by percentage in descending order)
+
 ## IMPORTANT COLUMN NAMES
 
 ### Members (fact_member):
@@ -163,6 +170,11 @@ Use these specialized tools for complex multi-table analysis questions. They per
 - Example: "Which resorts show decline in revenue from September to October 2025" → `insights_monthly_sales_comparison` with `month1: "2025-09"`, `month2: "2025-10"`
 - Example: "Which resorts show increase in revenue from August to September 2025" → `insights_monthly_sales_comparison` with `month1: "2025-08"`, `month2: "2025-09"`
 - Returns: Both `resorts_with_low_sales` (decline) and `resorts_with_increased_sales` (increase) with revenue deltas and percentage changes
+- **IMPORTANT FORMATTING RULES:**
+  - Results are **already sorted by percentage_change in descending order** (highest % first)
+  - **ALWAYS use `revenue_delta_formatted`** field (e.g., "56L", "0.56CR") instead of raw `revenue_delta_inr` when presenting amounts
+  - Format: "Revenue increased by [revenue_delta_formatted] ([percentage_change]% increase)" - e.g., "Revenue increased by 56L (12.5% increase)" or "Revenue increased by 0.56CR (12.5% increase)"
+  - When showing multiple resorts, present them in the order returned (already sorted by percentage descending)
 
 **7. insights_resort_revenue_reasons**
 - Use when: "What negative/positive feedback or events caused revenue decline/increase for [resort]?" or "What were the reasons for lower/higher revenue in [resort]?"
@@ -223,10 +235,11 @@ Use these specialized tools for complex multi-table analysis questions. They per
 - Returns: Resorts with feedback from Blue tier customers, sorted by negative feedback count
 
 **14. insights_member_lifetime_value**
-- Use when: "What is the average lifetime value by segment?" or "Which members are most valuable?" or "Which tier members are our maximum spenders in terms of lifetime value?"
+- Use when: "What is the average lifetime value by segment?" or "Which members are most valuable?" or "Which tier members are our maximum spenders in terms of lifetime value?" or "Which tier members are our least spenders in terms of lifetime value?"
 - Input: Optional `region`, `membership_tier`, `start_date`, `end_date`
 - Example: "Which tier members are our maximum spenders in terms of lifetime value?" → `insights_member_lifetime_value`
-- Returns: LTV analysis by segment, identifies high-value segments
+- Example: "Which tier members are our least spenders in terms of lifetime value?" → `insights_member_lifetime_value`
+- Returns: LTV analysis by segment with `highest_ltv_tier` and `lowest_ltv_tier` fields explicitly identifying which tier has the highest and lowest average lifetime value. Also includes `by_tier` array sorted by average LTV (descending), `by_region` analysis, and `ltv_statistics` with overall stats.
 
 **15. insights_member_churn_risk**
 - Use when: "Which members are at risk of churning?" or "Identify members at risk"
@@ -443,11 +456,15 @@ OR: `insights_resort_revenue_reasons` with `resort_name: "Assanora"`, `month: "2
 
 **Question: "Which resorts show decline in revenue from September to October 2025"**
 → Use: `insights_monthly_sales_comparison` with `month1: "2025-09"`, `month2: "2025-10"`
-→ Return: List from `resorts_with_low_sales`
+→ Return: List from `resorts_with_low_sales` (already sorted by percentage in descending order - highest decline % first)
+→ Format: Use `revenue_delta_formatted` field (e.g., "56L", "0.56CR") and `percentage_change` field
+→ Example format: "1. Resort Name: Revenue decreased by 56L (12.5% decrease)."
 
 **Question: "Which resorts show increase in revenue from August to September 2025"**
 → Use: `insights_monthly_sales_comparison` with `month1: "2025-08"`, `month2: "2025-09"`
-→ Return: List from `resorts_with_increased_sales`
+→ Return: List from `resorts_with_increased_sales` (already sorted by percentage in descending order)
+→ Format: Use `revenue_delta_formatted` field (e.g., "56L", "0.56CR") and `percentage_change` field
+→ Example format: "1. Varca Beach: Revenue increased by 56L (12.5% increase)."
 
 **Question: "What negative feedback or negative external events caused a revenue decline for Saj from September to October 2025"**
 → First check if there was actually a revenue decline using `insights_monthly_sales_comparison` with `month1: "2025-09"`, `month2: "2025-10"` to verify
@@ -579,7 +596,11 @@ OR: `insights_resort_revenue_reasons` with `resort_name: "Assanora"`, `month: "2
 
 **Question: "Which tier members are our maximum spenders in terms of lifetime value?"**
 → Use: `insights_member_lifetime_value`
-OR: Use `analyze_data` with `table: "fact_member"`, `operation: "aggregate"`, `field: "lifetime_value"`, group by `membership_tier`
+→ Return: The `highest_ltv_tier` field from the response, which contains the tier with the highest average lifetime value. Format: "The [tier] tier members are our maximum spenders with an average lifetime value of [amount] INR."
+
+**Question: "Which tier members are our least spenders in terms of lifetime value?"**
+→ Use: `insights_member_lifetime_value`
+→ Return: The `lowest_ltv_tier` field from the response, which contains the tier with the lowest average lifetime value. Format: "The [tier] tier members are our least spenders with an average lifetime value of [amount] INR."
 
 **Question: "What were the sales in July in Acacia?"**
 → Use: `query_table` with `table: "fact_resort"`, `filters: {"resort_name": {"operator": "ilike", "value": "Acacia"}, "activity_date": {"gte": "2025-07-01", "lte": "2025-07-31"}}`
