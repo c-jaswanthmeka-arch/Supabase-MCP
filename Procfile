@@ -1,2 +1,2 @@
-web: npm run start:sse
+web: node dist/sse-server.js
 

@@ -22,7 +22,7 @@ git push
 5. Click **"Connect"**
 
 ### 4. Configure Service
-Render will auto-detect the `render.yaml` file, but **IMPORTANT**: You must manually set the Start Command:
+Render will auto-detect the `render.yaml` file. The default `start` script now uses SSE, but **IMPORTANT**: Verify the Start Command:
 
 - **Name**: `supabase-mcp-server` (or any name)
 - **Region**: Choose closest to you (e.g., `Oregon (US West)`)
@@ -30,10 +30,13 @@ Render will auto-detect the `render.yaml` file, but **IMPORTANT**: You must manu
 - **Root Directory**: Leave empty (or `.` if needed)
 - **Environment**: `Node`
 - **Build Command**: `npm run build`
-- **Start Command**: `npm run start:sse` ⚠️ **CRITICAL - Set this manually!**
+- **Start Command**: Should be `npm start` (which now runs SSE server) or `node dist/sse-server.js` ⚠️ **VERIFY THIS!**
 - **Plan**: `Free` (or choose a paid plan)
 
-**Note**: The `Procfile` will also work as a backup, but make sure the Start Command is set correctly in the UI.
+**Note**: 
+- The `Procfile` contains `web: node dist/sse-server.js`
+- The default `npm start` now runs the SSE server
+- If it still fails, manually set Start Command to: `node dist/sse-server.js`
 
 ### 5. Deploy
 1. Click **"Create Web Service"**
