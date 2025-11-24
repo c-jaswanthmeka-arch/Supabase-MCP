@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: supabase-mcp-server
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm run start:sse
+    envVars:
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /
+

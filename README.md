@@ -223,12 +223,34 @@ const SUPABASE_API_KEY = "your-api-key";
 
 ## Deployment
 
-The server is deployed on Railway:
+### Deploying to Render
 
-- **Platform**: Railway
-- **URL**: `https://web-production-bd81.up.railway.app`
-- **Transport**: SSE/Streamable HTTP (MCP Protocol)
-- **Status**: Live and operational
+1. **Sign up/Login** to [Render](https://render.com) and connect your GitHub account
+
+2. **Create a New Web Service**:
+   - Click "New +" → "Web Service"
+   - Connect your GitHub repository
+   - Render will auto-detect the `render.yaml` configuration
+
+3. **Configure the Service** (if not using render.yaml):
+   - **Name**: `supabase-mcp-server` (or any name you prefer)
+   - **Environment**: `Node`
+   - **Build Command**: `npm run build`
+   - **Start Command**: `npm run start:sse`
+   - **Plan**: Free (or choose a paid plan)
+
+4. **Environment Variables** (optional):
+   - `NODE_ENV`: `production`
+   - `PORT`: Render automatically sets this (no need to set manually)
+
+5. **Deploy**: Click "Create Web Service" and Render will:
+   - Build your application
+   - Deploy it automatically
+   - Provide you with a URL like: `https://your-app-name.onrender.com`
+
+6. **Note**: On the free tier, your service will sleep after 15 minutes of inactivity. The first request after sleep may take 30-60 seconds to wake up.
+
+See `render.yaml` for deployment configuration.
 
 ### Deploying to Railway
 
@@ -252,6 +274,7 @@ See `railway.json` for deployment configuration.
 ├── package.json
 ├── tsconfig.json
 ├── railway.json          # Railway deployment config
+├── render.yaml           # Render deployment config
 ├── README.md
 └── MCP_COMPLETE_REFERENCE.txt  # Complete reference guide
 ```
