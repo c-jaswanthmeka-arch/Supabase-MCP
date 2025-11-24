@@ -22,7 +22,7 @@ git push
 5. Click **"Connect"**
 
 ### 4. Configure Service
-Render will auto-detect the `render.yaml` file, but you can verify:
+Render will auto-detect the `render.yaml` file, but **IMPORTANT**: You must manually set the Start Command:
 
 - **Name**: `supabase-mcp-server` (or any name)
 - **Region**: Choose closest to you (e.g., `Oregon (US West)`)
@@ -30,8 +30,10 @@ Render will auto-detect the `render.yaml` file, but you can verify:
 - **Root Directory**: Leave empty (or `.` if needed)
 - **Environment**: `Node`
 - **Build Command**: `npm run build`
-- **Start Command**: `npm run start:sse`
+- **Start Command**: `npm run start:sse` ⚠️ **CRITICAL - Set this manually!**
 - **Plan**: `Free` (or choose a paid plan)
+
+**Note**: The `Procfile` will also work as a backup, but make sure the Start Command is set correctly in the UI.
 
 ### 5. Deploy
 1. Click **"Create Web Service"**
@@ -86,6 +88,19 @@ If you need to add environment variables:
    - Any other variables your app needs
 
 ## Troubleshooting
+
+### Service Exits Early / Running Wrong Command
+**Problem**: Service shows "Application exited early" and logs show it's running `node dist/index.js` instead of `node dist/sse-server.js`
+
+**Solution**:
+1. Go to your service in Render dashboard
+2. Click **"Settings"** tab
+3. Scroll to **"Start Command"**
+4. Change it to: `npm run start:sse`
+5. Click **"Save Changes"**
+6. Render will automatically redeploy
+
+The `Procfile` should also help, but manually setting it in the UI is the most reliable.
 
 ### Service Won't Start
 - Check the **"Logs"** tab in Render dashboard
